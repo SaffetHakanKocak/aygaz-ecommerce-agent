@@ -1,0 +1,25 @@
+# .NET build output
+[Bb]in/
+[Oo]bj/
+[Aa]rtifacts/
+[Tt]est[Rr]esults/
+
+# Visual Studio / VS Code / JetBrains
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Temporary and local-only files
+*.tmp
+*.temp
+*.log
+*~
+appsettings.*.local.json
+
+# Operating system files
+.DS_Store
+Thumbs.db
