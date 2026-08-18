@@ -20,6 +20,12 @@
 *~
 appsettings.*.local.json
 
+# Local SQLite databases
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+
 # Operating system files
 .DS_Store
 Thumbs.db

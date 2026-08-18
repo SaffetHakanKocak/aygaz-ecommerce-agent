@@ -1,11 +1,13 @@
-﻿namespace Aygaz.ECommerce.Agent;
-
 using System.Text;
 using Aygaz.ECommerce.Agent.Configuration;
+using Aygaz.ECommerce.Agent.Data;
 using Aygaz.ECommerce.Agent.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+
+namespace Aygaz.ECommerce.Agent;
 
 internal static class Program
 {
@@ -24,13 +26,23 @@ internal static class Program
         try
         {
             using IHost host = CreateHost(args);
-            var localLlmService = host.Services.GetRequiredService<ILocalLlmService>();
+            await InitializeDatabaseAsync(host.Services, cancellationTokenSource.Token);
 
-            PrintHeader();
-            await RunChatLoopAsync(localLlmService, cancellationTokenSource.Token);
+            await RunMainMenuAsync(host.Services, cancellationTokenSource.Token);
+
             Console.WriteLine("Uygulama kapatıldı.");
-
             return 0;
+        }
+        catch (OperationCanceledException) when (cancellationTokenSource.IsCancellationRequested)
+        {
+            Console.WriteLine("Uygulama kapatıldı.");
+            return 0;
+        }
+        catch (DatabaseInitializationException exception)
+        {
+            Console.Error.WriteLine(exception.Message);
+            Console.Error.WriteLine($"Teknik detay: {exception.TechnicalDetails}");
+            return 1;
         }
         catch (OptionsValidationException exception)
         {
@@ -61,9 +73,66 @@ internal static class Program
         };
 
         HostApplicationBuilder builder = Host.CreateApplicationBuilder(settings);
+        builder.Logging.ClearProviders();
         builder.Services.AddLocalLlm(builder.Configuration);
+        builder.Services.AddCustomerData(builder.Configuration);
 
         return builder.Build();
+    }
+
+    private static async Task InitializeDatabaseAsync(
+        IServiceProvider serviceProvider,
+        CancellationToken cancellationToken)
+    {
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+        var initializer = scope.ServiceProvider.GetRequiredService<DatabaseInitializer>();
+        await initializer.InitializeAsync(cancellationToken);
+    }
+
+    private static async Task RunMainMenuAsync(
+        IServiceProvider serviceProvider,
+        CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            PrintMainMenu();
+
+            string? selection;
+            try
+            {
+                selection = await Console.In.ReadLineAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            switch (selection?.Trim())
+            {
+                case "1":
+                    var localLlmService =
+                        serviceProvider.GetRequiredService<ILocalLlmService>();
+                    PrintLocalLlmHeader();
+                    await RunChatLoopAsync(localLlmService, cancellationToken);
+                    break;
+                case "2":
+                    await using (AsyncServiceScope scope = serviceProvider.CreateAsyncScope())
+                    {
+                        var runner = scope.ServiceProvider
+                            .GetRequiredService<ConsoleCustomerTestRunner>();
+                        await runner.RunAsync(cancellationToken);
+                    }
+
+                    break;
+                case "0":
+                case null:
+                    return;
+                default:
+                    Console.WriteLine("Geçersiz seçim. Lütfen 0, 1 veya 2 girin.");
+                    Console.WriteLine();
+                    break;
+            }
+        }
     }
 
     private static async Task RunChatLoopAsync(
@@ -72,7 +141,7 @@ internal static class Program
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            Console.WriteLine("Sorunuz:");
+            Console.WriteLine("Sorunuz (ana menü için 'exit'):");
             Console.Write("> ");
 
             string? question;
@@ -82,17 +151,17 @@ internal static class Program
             }
             catch (OperationCanceledException)
             {
-                break;
+                return;
             }
 
             if (question is null || question.Trim().Equals("exit", StringComparison.OrdinalIgnoreCase))
             {
-                break;
+                return;
             }
 
             if (string.IsNullOrWhiteSpace(question))
             {
-                Console.WriteLine("Lütfen bir soru yazın veya çıkmak için 'exit' girin.");
+                Console.WriteLine("Lütfen bir soru yazın veya ana menü için 'exit' girin.");
                 Console.WriteLine();
                 continue;
             }
@@ -110,17 +179,32 @@ internal static class Program
                 Console.Error.WriteLine(exception.Message);
                 Console.Error.WriteLine($"Teknik detay: {exception.TechnicalDetails}");
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                break;
+                return;
             }
 
             Console.WriteLine();
         }
     }
 
-    private static void PrintHeader()
+    private static void PrintMainMenu()
     {
+        Console.WriteLine("=========================================");
+        Console.WriteLine("Aygaz E-Commerce AI Agent");
+        Console.WriteLine("=========================================");
+        Console.WriteLine();
+        Console.WriteLine("1 - Local LLM Test");
+        Console.WriteLine("2 - Customer Database Test");
+        Console.WriteLine("0 - Exit");
+        Console.WriteLine();
+        Console.WriteLine("Seçiminiz:");
+        Console.Write("> ");
+    }
+
+    private static void PrintLocalLlmHeader()
+    {
+        Console.WriteLine();
         Console.WriteLine("=========================================");
         Console.WriteLine("Aygaz E-Commerce AI Agent");
         Console.WriteLine("Local LLM Connection Test");
