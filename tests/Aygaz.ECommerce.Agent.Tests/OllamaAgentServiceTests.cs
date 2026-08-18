@@ -201,6 +201,122 @@ public sealed class OllamaAgentServiceTests
     }
 
     [Fact]
+    public async Task AskAsync_SkuThenInventory_UsesThreeModelResponsesAndExactToolHistory()
+    {
+        var productToolCall = new OllamaToolCall(
+            "call-product",
+            new OllamaToolCallFunction(
+                Name: ProductToolExecutor.GetProductBySkuToolName,
+                Arguments: ParseJson(
+                    """{"sku":"AYG-DEMO-PRD-001"}""")));
+        var inventoryToolCall = new OllamaToolCall(
+            "call-inventory",
+            new OllamaToolCallFunction(
+                Name: InventoryToolExecutor.GetProductInventoryToolName,
+                Arguments: ParseJson("""{"productId":1}""")));
+        var productAssistantMessage = new OllamaChatMessage(
+            "assistant",
+            null,
+            [productToolCall]);
+        var inventoryAssistantMessage = new OllamaChatMessage(
+            "assistant",
+            null,
+            [inventoryToolCall]);
+        var finalAssistantMessage = new OllamaChatMessage(
+            "assistant",
+            "Demo Product Alpha stokta bulunuyor.");
+        var chatClient = new RecordingOllamaChatClient(
+            productAssistantMessage,
+            inventoryAssistantMessage,
+            finalAssistantMessage);
+        ToolExecutionResult productResult = ToolExecutionResult.FromSuccess(
+            new
+            {
+                id = 1,
+                sku = "AYG-DEMO-PRD-001",
+                name = "Demo Product Alpha",
+                category = "DemoCategoryA",
+                unitPrice = 125.50m,
+                isActive = true
+            });
+        ToolExecutionResult inventoryResult = ToolExecutionResult.FromSuccess(
+            new[]
+            {
+                new
+                {
+                    locationCode = "DEMO-LOC-01",
+                    locationName = "Demo Depo Bir",
+                    quantityAvailable = 120
+                },
+                new
+                {
+                    locationCode = "DEMO-LOC-02",
+                    locationName = "Demo Depo Iki",
+                    quantityAvailable = 35
+                }
+            });
+        var toolExecutor = new RecordingAgentToolExecutor(
+            productResult,
+            inventoryResult);
+        var agent = CreateAgent(chatClient, toolExecutor);
+
+        string answer = await agent.AskAsync(
+            "  AYG-DEMO-PRD-001 stokta mi?  ");
+
+        Assert.Equal("Demo Product Alpha stokta bulunuyor.", answer);
+        Assert.Equal(3, chatClient.Calls.Count);
+        Assert.Equal(
+            new[]
+            {
+                ProductToolExecutor.GetProductBySkuToolName,
+                InventoryToolExecutor.GetProductInventoryToolName
+            },
+            toolExecutor.Calls.Select(call => call.ToolName));
+        Assert.Equal(
+            "AYG-DEMO-PRD-001",
+            toolExecutor.Calls[0].Arguments.GetProperty("sku").GetString());
+        Assert.Equal(
+            1,
+            toolExecutor.Calls[1].Arguments.GetProperty("productId").GetInt32());
+
+        ChatInvocation firstRequest = chatClient.Calls[0];
+        Assert.Equal(
+            new[] { "system", "user" },
+            firstRequest.Messages.Select(message => message.Role));
+        Assert.Equal("AYG-DEMO-PRD-001 stokta mi?", firstRequest.Messages[1].Content);
+
+        ChatInvocation secondRequest = chatClient.Calls[1];
+        Assert.Equal(
+            new[] { "system", "user", "assistant", "tool" },
+            secondRequest.Messages.Select(message => message.Role));
+        Assert.Equal(productAssistantMessage, secondRequest.Messages[2]);
+        Assert.Equal("tool", secondRequest.Messages[3].Role);
+        Assert.Equal(ProductToolExecutor.GetProductBySkuToolName, secondRequest.Messages[3].ToolName);
+        Assert.Equal("call-product", secondRequest.Messages[3].ToolCallId);
+        Assert.Equal(productResult.Content, secondRequest.Messages[3].Content);
+
+        ChatInvocation thirdRequest = chatClient.Calls[2];
+        Assert.Equal(
+            new[] { "system", "user", "assistant", "tool", "assistant", "tool" },
+            thirdRequest.Messages.Select(message => message.Role));
+        Assert.Equal(productAssistantMessage, thirdRequest.Messages[2]);
+        Assert.Equal(secondRequest.Messages[3], thirdRequest.Messages[3]);
+        Assert.Equal(inventoryAssistantMessage, thirdRequest.Messages[4]);
+        Assert.Equal("tool", thirdRequest.Messages[5].Role);
+        Assert.Equal(InventoryToolExecutor.GetProductInventoryToolName, thirdRequest.Messages[5].ToolName);
+        Assert.Equal("call-inventory", thirdRequest.Messages[5].ToolCallId);
+        Assert.Equal(inventoryResult.Content, thirdRequest.Messages[5].Content);
+
+        Assert.All(
+            chatClient.Calls,
+            call =>
+            {
+                OllamaChatSettings settings = Assert.IsType<OllamaChatSettings>(call.Settings);
+                Assert.Same(toolExecutor.ToolDefinitions, settings.Tools);
+            });
+    }
+
+    [Fact]
     public async Task AskAsync_NoToolCall_ReturnsFinalContentWithoutCallingExecutor()
     {
         var chatClient = new RecordingOllamaChatClient(
@@ -355,7 +471,9 @@ public sealed class OllamaAgentServiceTests
                 MaxToolCallsPerIteration = maxToolCallsPerIteration,
                 MaxConversationTurns = 4,
                 MaxNameSearchResults = 5,
-                MaxOrderSearchResults = 5
+                MaxOrderSearchResults = 5,
+                MaxProductSearchResults = 5,
+                MaxInventoryLocationResults = 5
             }));
     }
 
@@ -435,6 +553,32 @@ public sealed class OllamaAgentServiceTests
                             ["customerId"] = new("integer", "Test customer id")
                         },
                         ["customerId"],
+                        AdditionalProperties: false))),
+            new OllamaToolDefinition(
+                "function",
+                new OllamaToolFunctionDefinition(
+                    ProductToolExecutor.GetProductBySkuToolName,
+                    "Test product tool",
+                    new OllamaToolParameters(
+                        "object",
+                        new Dictionary<string, OllamaToolProperty>
+                        {
+                            ["sku"] = new("string", "Test SKU")
+                        },
+                        ["sku"],
+                        AdditionalProperties: false))),
+            new OllamaToolDefinition(
+                "function",
+                new OllamaToolFunctionDefinition(
+                    InventoryToolExecutor.GetProductInventoryToolName,
+                    "Test inventory tool",
+                    new OllamaToolParameters(
+                        "object",
+                        new Dictionary<string, OllamaToolProperty>
+                        {
+                            ["productId"] = new("integer", "Test product id")
+                        },
+                        ["productId"],
                         AdditionalProperties: false)))
         ];
 

@@ -27,12 +27,20 @@ public static class AgentServiceCollectionExtensions
                 options => options.MaxOrderSearchResults is >= 1 and <= 20,
                 "Agent:MaxOrderSearchResults 1 ile 20 arasında olmalıdır.")
             .Validate(
+                options => options.MaxProductSearchResults is >= 1 and <= 20,
+                "Agent:MaxProductSearchResults 1 ile 20 arasında olmalıdır.")
+            .Validate(
+                options => options.MaxInventoryLocationResults is >= 1 and <= 20,
+                "Agent:MaxInventoryLocationResults 1 ile 20 arasında olmalıdır.")
+            .Validate(
                 options => options.MaxConversationTurns is >= 1 and <= 10,
                 "Agent:MaxConversationTurns 1 ile 10 arasında olmalıdır.");
 
         services.AddScoped<IToolCallLogger, ConsoleToolCallLogger>();
         services.AddScoped<IAgentToolModule, CustomerToolExecutor>();
         services.AddScoped<IAgentToolModule, OrderToolExecutor>();
+        services.AddScoped<IAgentToolModule, ProductToolExecutor>();
+        services.AddScoped<IAgentToolModule, InventoryToolExecutor>();
         services.AddScoped<IAgentToolExecutor, CompositeAgentToolExecutor>();
         services.AddScoped<IAgentService, OllamaAgentService>();
         services.AddScoped<IGuardedAgentService, DomainGuardedAgentService>();

@@ -1,6 +1,6 @@
 # Aygaz E-Commerce AI Agent
 
-Kontrollü C# servisleriyle genişletilen yerel bir e-ticaret Agentic AI geliştirme projesidir. Local Ollama bağlantısı, tamamen sentetik Customer veri katmanı, native tool calling, merkezi Aygaz domain guardrail'i ve read-only Order sorgulama yetenekleri Aşama 1-5 kapsamında tamamlanmıştır.
+Kontrollü C# servisleriyle genişletilen yerel bir e-ticaret Agentic AI geliştirme projesidir. Local Ollama bağlantısı, tamamen sentetik Customer/Order/Product/Inventory veri katmanı, native tool calling, merkezi Aygaz domain guardrail'i ve read-only sorgulama yetenekleri Aşama 1-6 kapsamında tamamlanmıştır.
 
 ## Teknolojiler ve gereksinimler
 
@@ -44,7 +44,7 @@ Ana menü seçenekleri:
 
 Customer test menüsünde tüm müşteriler listelenebilir; ID, e-posta veya ad/soyad ile sorgulama yapılabilir. Bu menü yalnızca geliştirme ve test amaçlıdır.
 
-E-Commerce AI Agent menüsünde doğal dilde müşteri ve sipariş sorguları yazılabilir. Her mesaj agent'tan önce domain guardrail tarafından sınıflandırılır. `back` ana menüye döner, `exit` uygulamayı kapatır.
+E-Commerce AI Agent menüsünde doğal dilde müşteri, sipariş, ürün ve stok sorguları yazılabilir. Her mesaj agent'tan önce domain guardrail tarafından sınıflandırılır. `back` ana menüye döner, `exit` uygulamayı kapatır.
 
 ## Aygaz domain guardrail ve scope control
 
@@ -63,7 +63,7 @@ Ana güvenlik sınırı yalnızca system prompt değildir. `DomainGuardedAgentSe
 
 Kararlar:
 
-- `Allowed`: Aygaz e-ticaret isteği, sentetik müşteri/sipariş sorgusu veya kısa selamlama
+- `Allowed`: Aygaz e-ticaret isteği, sentetik müşteri/sipariş/ürün/stok sorgusu veya kısa selamlama
 - `OutOfScope`: başka organizasyonlara ait talepler ya da e-ticaret domain'iyle ilgisiz genel konular
 - `Ambiguous`: Aygaz e-ticaret bağlantısı güvenilir biçimde belirlenemeyen talepler
 
@@ -78,15 +78,17 @@ Scope policy'si `appsettings.json` içindeki `DomainGuardrail` bölümünde merk
 
 Rakip şirket adlarından oluşan bir blacklist veya keyword router kullanılmaz. Policy ileride yeni organizasyon ve capability değerleriyle genişletilebilir.
 
-Domain ve capability farklı kavramlardır. Customer ve Order sorguları artık desteklenen capability'lerdir. `Aygaz ürün stoklarını göster` ise domain içinde `Allowed` olabilir; Inventory tool'u henüz bulunmadığından agent bu veriyi sağlamadığını söyler ve stok uydurmaz. Başka bir organizasyonun müşteri veya sipariş talebi `OutOfScope` kalır. Domain guardrail konu uygunluğunu, tool allow-list'i ise hangi işlemin yetkili olduğunu bağımsız olarak denetler.
+Domain ve capability farklı kavramlardır. Customer, Order, Product ve Inventory sorguları desteklenen read-only capability'lerdir. `Aygaz ürününün stok miktarını artır` domain içinde `Allowed` olabilir; ancak write tool bulunmadığından hiçbir veri değişmez. Başka bir organizasyonun müşteri, sipariş, ürün veya stok talebi `OutOfScope` kalır. Domain guardrail konu uygunluğunu, tool allow-list'i ise hangi işlemin yetkili olduğunu bağımsız olarak denetler.
 
 Örnekler:
 
 ```text
 Allowed:    ahmet.yilmaz@example.com müşterisi kim?
 Allowed:    AYG-DEMO-1001 siparişi ne durumda?
-Allowed:    Aygaz ürün stoklarını göster.  (capability henüz yok)
+Allowed:    AYG-DEMO-PRD-001 stokta mı?
+Allowed:    Demo Product Alpha ürününü bul.
 OutOfScope: Arçelik hakkında bilgi ver.
+OutOfScope: Ford stoklarını getir.
 OutOfScope: Bugünkü futbol maçlarını anlat.
 Ambiguous:  Bunun durumunu kontrol et.
 ```
@@ -97,7 +99,7 @@ MVP'de her kullanıcı mesajı için ayrı guardrail inference çalışır. `All
 
 Aşama 3, herhangi bir agent framework kullanmadan Ollama'nın native `POST /api/chat` tool calling sözleşmesini doğrudan uygular. Semantic Kernel, Microsoft Agent Framework, LangChain veya AutoGen kullanılmaz.
 
-Agent'a yalnızca şu altı read-only tool açılır:
+Agent'a yalnızca şu on read-only tool açılır:
 
 Customer tools:
 
@@ -111,7 +113,17 @@ Order tools:
 - `get_customer_orders(customerId)` — müşteri için en yeni en fazla yapılandırılmış sayıda sipariş
 - `get_latest_customer_order(customerId)` — müşterinin en son siparişi
 
-`get_all_customers` ve `get_all_orders` allow-list'te bulunmaz. `GetOrderByIdAsync` service katmanında vardır ancak LLM'e tool olarak açılmaz. Create, update, cancel, delete, refund ve raw SQL tool'ları yoktur. `CustomerToolExecutor` ile `OrderToolExecutor`, exact tool adlarını kullanan `CompositeAgentToolExecutor` altında modüler olarak birleşir; reflection veya kullanıcı metnine dayalı routing yapılmaz.
+Product tools:
+
+- `get_product_by_sku(sku)` — sentetik SKU ile tek ürün
+- `search_products(query)` — ürün adı, SKU veya kategori ile en fazla yapılandırılmış sayıda sonuç
+
+Inventory tools:
+
+- `get_product_inventory(productId)` — ürünün sınırlı lokasyon bazlı stok kayıtları
+- `get_total_product_stock(productId)` — ürünün C# servisinde hesaplanan toplam kullanılabilir stoku
+
+`get_all_customers`, `get_all_orders`, `get_all_products` ve `get_all_inventory` allow-list'te bulunmaz. Service-only ID metotları LLM'e tool olarak açılmaz. Create, update, delete, price/stock mutation, refund ve raw SQL tool'ları yoktur. Dört domain executor'ı exact tool adlarını kullanan `CompositeAgentToolExecutor` altında modüler olarak birleşir; reflection veya kullanıcı metnine dayalı routing yapılmaz.
 
 Akış:
 
@@ -131,9 +143,28 @@ User → Domain Guardrail → Ollama Agent
                        Türkçe final yanıt
 ```
 
-Assistant'ın `tool_calls` mesajı ve ardından `role=tool` sonucu doğru sırayla conversation history'ye eklenir. Tool çağrısı kalmayana kadar loop devam eder. Customer → Order zincirini C# seçmez; Ollama ilk tool sonucundaki Customer ID'yi gördükten sonra ikinci tool'u native olarak seçer. Iteration, bir yanıttaki tool sayısı, Order liste limiti ve saklanan tamamlanmış conversation turn sayısı `Agent` ayarlarıyla sınırlandırılır.
+Product → Inventory zinciri de aynı generic loop'u kullanır:
 
-LLM'e EF entity veya tam DTO verilmez. `CustomerAgentResult` yalnız `Id`, `FirstName`, `LastName`, `Email`, `City`; `OrderAgentResult` yalnız `Id`, `OrderNumber`, `OrderDate`, Türkçe `Status`, `TotalAmount` içerir. Order sonucunda `CustomerId` tekrarlanmaz. Telefon, CreatedAt, adres, ödeme ve navigation graph hiçbir tool sonucuna dahil edilmez. Tutarın para birimi modelde bulunmadığından agent para birimi uydurmaması için açıkça sınırlandırılır. Tool logları yalnız ad, güvenli argument özeti ve `Success | NotFound | Rejected` durumunu gösterir; ad/soyad arama metni redakte edilir ve sonuç payload'ını yazmaz.
+```text
+User → Domain Guardrail → Ollama Agent
+                              ↓
+                    get_product_by_sku
+                              ↓
+                       Product ID sonucu
+                              ↓
+               get_product_inventory veya
+                get_total_product_stock
+                              ↓
+          IInventoryService → EF Core → SQLite
+                              ↓
+                  role=tool minimum JSON
+                              ↓
+                       Türkçe final yanıt
+```
+
+Assistant'ın `tool_calls` mesajı ve ardından `role=tool` sonucu doğru sırayla conversation history'ye eklenir. Tool çağrısı kalmayana kadar loop devam eder. Customer → Order ve Product → Inventory zincirlerini C# seçmez; Ollama ilk lookup sonucundaki ID'yi gördükten sonra ikinci tool'u native olarak seçer. Iteration, bir yanıttaki tool sayısı, arama/lokasyon limitleri ve saklanan tamamlanmış conversation turn sayısı `Agent` ayarlarıyla sınırlandırılır.
+
+LLM'e EF entity veya tam DTO verilmez. Customer ve Order sonuçları önceki minimum alanlarını korur. `ProductAgentResult` yalnız `Id`, `Sku`, `Name`, `Category`, `UnitPrice`, `IsActive`; lokasyon sonucu yalnız `LocationCode`, `LocationName`, `QuantityAvailable`; toplam stok sonucu yalnız `TotalQuantityAvailable` içerir. Inventory internal ID, ProductId, ReorderLevel, UpdatedAt ve navigation graph dışarı verilmez. Para birimi modelde bulunmadığından agent para birimi uydurmaması için sınırlandırılır. Tool logları yalnız ad, güvenli argument özeti ve `Success | NotFound | Rejected` durumunu gösterir; serbest arama metni ve demo dışı SKU redakte edilir, sonuç payload'ı yazılmaz.
 
 Örnek sorgular:
 
@@ -145,23 +176,30 @@ nobody@example.com müşterisi kim?
 AYG-DEMO-1001 numaralı siparişin durumu nedir?
 ahmet.yilmaz@example.com müşterisinin siparişlerini getir.
 Ahmet Yılmaz'ın son siparişinin durumu nedir?
+AYG-DEMO-PRD-001 ürününü bul.
+Demo Product Alpha stokta mı?
+AYG-DEMO-PRD-003 stokta mı?
 ```
 
-## Customer ve Order database
+## Customer, Order, Product ve Inventory database
 
 - Database: SQLite
-- Dosya: repository kökündeki `aygaz-ecommerce-v2.db` (yukarıdaki komut kökten çalıştırıldığında)
-- Şema: `Customer` ve `CustomerOrder`; Customer 1 → * Orders
-- Kısıtlar: zorunlu FK, unique case-insensitive OrderNumber, decimal precision ve negatif olmayan tutar
-- Veri: 12 deterministik müşteri ve 24 deterministik sipariş; tamamı sentetik
+- Dosya: repository kökündeki `aygaz-ecommerce-v3.db` (yukarıdaki komut kökten çalıştırıldığında)
+- Şema: `Customer`, `CustomerOrder`, `Product`, `InventoryRecord`
+- İlişkiler: Customer 1 → * Orders; Product 1 → * InventoryRecords
+- Kısıtlar: zorunlu FK'ler, unique case-insensitive OrderNumber/SKU, unique Product+Location, decimal precision ve negatif olmayan tutar/miktar eşikleri
+- Veri: 12 müşteri, 24 sipariş, 12 ürün ve 16 inventory kaydı; tamamı deterministik ve sentetik
 - Çeşitlilik: tüm beş Order status değeri, birden fazla siparişli müşteriler ve siparişsiz Burak Yıldız
 - E-postalar yalnızca `example.com`, telefonlar açıkça test formatındadır
 - Sipariş numaraları yalnız `AYG-DEMO-*` test formatındadır
-- Service dönüşleri: `CustomerDto` ve `OrderDto`
+- Ürün SKU'ları yalnız `AYG-DEMO-PRD-*`; lokasyonlar yalnız `DEMO-LOC-*` formatındadır
+- Ürün adları, kategoriler, fiyatlar, lokasyonlar ve stok miktarları demo verisidir; gerçek Aygaz katalog, fiyat, depo veya stok bilgisi değildir
+- Seed; yüksek, düşük ve sıfır stok, çoklu/tek lokasyon, inventory kayıtsız ürün ve inactive ürün senaryolarını içerir
+- Service dönüşleri: `CustomerDto`, `OrderDto`, `ProductDto` ve `InventoryDto`
 
-Database dosyası ile SQLite WAL/journal yan dosyaları Git tarafından ignore edilir. Customer ve Order seedleri ayrı missing-only kontrollerle idempotent çalışır; tekrar başlangıç duplicate üretmez.
+Database dosyası ile SQLite WAL/journal yan dosyaları Git tarafından ignore edilir. Dört seed grubu ayrı missing-only kontrollerle idempotent çalışır; tekrar başlangıç duplicate üretmez.
 
-Proje hâlâ `EnsureCreatedAsync` kullandığından eski `aygaz-ecommerce.db` şemasını otomatik yükseltmez. Aşama 5, güvenli MVP reset stratejisi olarak yeni versioned `aygaz-ecommerce-v2.db` dosyasını kullanır; eski development DB sessizce silinmez veya değiştirilmez. Eski dosya artık gerekmiyorsa kullanıcı manuel silebilir. Production şema değişiklikleri ileride EF Core migrations ile yönetilmelidir.
+Proje hâlâ `EnsureCreatedAsync` kullandığından mevcut şemaları otomatik yükseltmez. Aşama 6, güvenli sentetik MVP stratejisi olarak yeni versioned `aygaz-ecommerce-v3.db` dosyasını kullanır; v1/v2 development DB dosyaları sessizce silinmez veya değiştirilmez. Eski dosyalar artık gerekmiyorsa kullanıcı manuel silebilir. Production şema değişiklikleri ileride EF Core migrations ile yönetilmelidir.
 
 Bağlantı dizesi, Ollama ayarları, `Agent` limitleri ve `DomainGuardrail` policy'si `src/Aygaz.ECommerce.Agent/appsettings.json` içinden yönetilir.
 
@@ -173,7 +211,7 @@ dotnet build .\Aygaz.ECommerce.Agent.sln --no-restore
 dotnet test .\Aygaz.ECommerce.Agent.sln --no-build --no-restore
 ```
 
-168 automated test; gerçek SQLite in-memory bağlantısıyla Customer/Order seed idempotency, FK, unique numara, negatif olmayan tutar, status kapsamı ve service sorgularını doğrular. Elle yazılmış fake'ler exact altı-tool allow-list'ini, strict argument validation'ı, output minimization'ı, Customer → Order tool history sırasını, strict classifier parsing'i ve fail-closed davranışı kapsar. Automated testler local Ollama'ya bağımlı değildir; native model seçimi ayrıca gerçek Ollama A-J senaryolarıyla doğrulanmıştır.
+273 automated test; gerçek SQLite in-memory bağlantısıyla dört seed grubunun idempotency'sini, Product → Inventory ilişkisini, FK/unique/check kısıtlarını, sıfır stok ile inventory kaydı olmaması ayrımını ve tüm service sorgularını doğrular. Elle yazılmış fake'ler exact on-tool allow-list'ini, strict argument validation'ı, output minimization'ı, Customer → Order ve Product → Inventory tool history sıralarını, strict classifier parsing'i ve fail-closed davranışı kapsar. Automated testler local Ollama'ya bağımlı değildir; native model seçimi ayrıca gerçek Ollama A-L senaryolarıyla doğrulanmıştır.
 
 ## Roadmap
 
@@ -182,7 +220,7 @@ dotnet test .\Aygaz.ECommerce.Agent.sln --no-build --no-restore
 - Aşama 3 — Local LLM Tool Calling — **TAMAMLANDI**
 - Aşama 4 — Aygaz Domain Guardrails — **TAMAMLANDI**
 - Aşama 5 — Orders — **TAMAMLANDI**
-- Aşama 6 — Products / Inventory
+- Aşama 6 — Products / Inventory — **TAMAMLANDI**
 - Aşama 7 — Sales Analysis
 - Aşama 8 — RAG
 - Aşama 9 — Authorization / Audit

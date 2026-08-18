@@ -199,6 +199,10 @@ public sealed class DomainGuardrailServiceTests
         Assert.Contains("OrderLookup", systemPrompt);
         Assert.Contains("CustomerOrders", systemPrompt);
         Assert.Contains("OrderStatus", systemPrompt);
+        Assert.Contains("ProductLookup", systemPrompt);
+        Assert.Contains("ProductSearch", systemPrompt);
+        Assert.Contains("InventoryLookup", systemPrompt);
+        Assert.Contains("StockAvailability", systemPrompt);
         Assert.DoesNotContain("Arçelik nedir?", systemPrompt);
 
         string userContent = Assert.IsType<string>(invocation.Messages[1].Content);
@@ -317,6 +321,56 @@ public sealed class DomainGuardrailServiceTests
         Assert.Equal(input, userDocument.RootElement.GetProperty("request").GetString());
     }
 
+    [Theory]
+    [InlineData(
+        "AYG-DEMO-PRD-001 stokta mi?",
+        "Allowed",
+        DomainScopeDecision.Allowed,
+        DomainScopeReasonCode.ClassifiedAllowed)]
+    [InlineData(
+        "Demo Product Alpha urununu bul",
+        "Allowed",
+        DomainScopeDecision.Allowed,
+        DomainScopeReasonCode.ClassifiedAllowed)]
+    [InlineData(
+        "Arcelik urunlerini goster",
+        "OutOfScope",
+        DomainScopeDecision.OutOfScope,
+        DomainScopeReasonCode.ClassifiedOutOfScope)]
+    [InlineData(
+        "Ford stoklarini getir",
+        "OutOfScope",
+        DomainScopeDecision.OutOfScope,
+        DomainScopeReasonCode.ClassifiedOutOfScope)]
+    [InlineData(
+        "Tupras urun fiyatlarini goster",
+        "OutOfScope",
+        DomainScopeDecision.OutOfScope,
+        DomainScopeReasonCode.ClassifiedOutOfScope)]
+    public async Task EvaluateAsync_ProductQuery_ParsesScriptedClassifierDecisionWithToolsDisabled(
+        string input,
+        string scriptedDecision,
+        DomainScopeDecision expectedDecision,
+        DomainScopeReasonCode expectedReasonCode)
+    {
+        var chatClient = new RecordingOllamaChatClient(
+            new OllamaChatMessage(
+                "assistant",
+                JsonSerializer.Serialize(new { decision = scriptedDecision })));
+        var service = CreateService(chatClient);
+
+        DomainScopeResult result = await service.EvaluateAsync(input);
+
+        Assert.Equal(expectedDecision, result.Decision);
+        Assert.Equal(expectedReasonCode, result.ReasonCode);
+        ChatInvocation invocation = Assert.Single(chatClient.Calls);
+        Assert.Null(Assert.IsType<OllamaChatSettings>(invocation.Settings).Tools);
+
+        using JsonDocument userDocument = JsonDocument.Parse(
+            Assert.IsType<string>(invocation.Messages[1].Content));
+        Assert.Equal(input, userDocument.RootElement.GetProperty("request").GetString());
+    }
+
     public static IEnumerable<object?[]> MalformedClassifierContents()
     {
         yield return [null];
@@ -353,7 +407,11 @@ public sealed class DomainGuardrailServiceTests
                     "CustomerSearch",
                     "OrderLookup",
                     "CustomerOrders",
-                    "OrderStatus"
+                    "OrderStatus",
+                    "ProductLookup",
+                    "ProductSearch",
+                    "InventoryLookup",
+                    "StockAvailability"
                 ],
                 MaxInputCharacters = maxInputCharacters,
                 ClassifierMaxOutputTokens = 32

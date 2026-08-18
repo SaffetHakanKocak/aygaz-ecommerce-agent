@@ -10,6 +10,10 @@ public sealed class ECommerceDbContext(DbContextOptions<ECommerceDbContext> opti
 
     public DbSet<CustomerOrder> CustomerOrders => Set<CustomerOrder>();
 
+    public DbSet<Product> Products => Set<Product>();
+
+    public DbSet<InventoryRecord> InventoryRecords => Set<InventoryRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -81,6 +85,97 @@ public sealed class ECommerceDbContext(DbContextOptions<ECommerceDbContext> opti
             order.HasOne(entity => entity.Customer)
                 .WithMany(customer => customer.Orders)
                 .HasForeignKey(entity => entity.CustomerId)
+                .IsRequired()
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Product>(product =>
+        {
+            product.ToTable(
+                "Products",
+                table => table.HasCheckConstraint(
+                    "CK_Products_UnitPrice_NonNegative",
+                    "\"UnitPrice\" >= 0"));
+
+            product.HasKey(entity => entity.Id);
+
+            product.Property(entity => entity.Sku)
+                .HasMaxLength(Product.MaximumSkuLength)
+                .UseCollation("NOCASE")
+                .IsRequired();
+
+            product.HasIndex(entity => entity.Sku)
+                .IsUnique();
+
+            product.Property(entity => entity.Name)
+                .HasMaxLength(Product.MaximumNameLength)
+                .UseCollation("NOCASE")
+                .IsRequired();
+
+            product.HasIndex(entity => entity.Name);
+
+            product.Property(entity => entity.Category)
+                .HasMaxLength(Product.MaximumCategoryLength)
+                .UseCollation("NOCASE")
+                .IsRequired();
+
+            product.HasIndex(entity => entity.Category);
+
+            product.Property(entity => entity.UnitPrice)
+                .HasPrecision(18, 2)
+                .IsRequired();
+
+            product.Property(entity => entity.IsActive)
+                .IsRequired();
+
+            product.Property(entity => entity.CreatedAt)
+                .IsRequired();
+        });
+
+        modelBuilder.Entity<InventoryRecord>(inventory =>
+        {
+            inventory.ToTable(
+                "InventoryRecords",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_InventoryRecords_QuantityAvailable_NonNegative",
+                        "\"QuantityAvailable\" >= 0");
+                    table.HasCheckConstraint(
+                        "CK_InventoryRecords_ReorderLevel_NonNegative",
+                        "\"ReorderLevel\" >= 0");
+                });
+
+            inventory.HasKey(entity => entity.Id);
+
+            inventory.Property(entity => entity.LocationCode)
+                .HasMaxLength(InventoryRecord.MaximumLocationCodeLength)
+                .UseCollation("NOCASE")
+                .IsRequired();
+
+            inventory.Property(entity => entity.LocationName)
+                .HasMaxLength(InventoryRecord.MaximumLocationNameLength)
+                .IsRequired();
+
+            inventory.Property(entity => entity.QuantityAvailable)
+                .IsRequired();
+
+            inventory.Property(entity => entity.ReorderLevel)
+                .IsRequired();
+
+            inventory.Property(entity => entity.UpdatedAt)
+                .IsRequired();
+
+            inventory.HasIndex(entity => new
+                {
+                    entity.ProductId,
+                    entity.LocationCode
+                })
+                .IsUnique();
+
+            inventory.HasOne(entity => entity.Product)
+                .WithMany(product => product.InventoryRecords)
+                .HasForeignKey(entity => entity.ProductId)
                 .IsRequired()
                 .OnDelete(DeleteBehavior.Restrict);
         });

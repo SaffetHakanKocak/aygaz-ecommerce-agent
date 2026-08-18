@@ -35,6 +35,8 @@ public static class CustomerDataServiceCollectionExtensions
         services.AddScoped<DatabaseInitializer>();
         services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<IOrderService, OrderService>();
+        services.AddScoped<IProductService, ProductService>();
+        services.AddScoped<IInventoryService, InventoryService>();
         services.AddScoped<ConsoleCustomerTestRunner>();
 
         return services;

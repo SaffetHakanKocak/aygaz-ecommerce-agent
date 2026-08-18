@@ -222,11 +222,11 @@ public sealed class DomainGuardrailService : IDomainGuardrailService
 
             Karar kuralları:
             - İzin verilen organizasyonların e-ticaret operasyonları Allowed.
-            - Organizasyon adı yazılmasa bile sentetik müşteri ID, e-posta, ad, soyad veya
-              sentetik sipariş numarası sorguları Allowed.
+            - Organizasyon adı yazılmasa bile sentetik müşteri ID, e-posta, ad, soyad,
+              sentetik sipariş numarası, sentetik ürün SKU'su veya demo ürün araması Allowed.
             - Selamlama ve kısa conversation-level mesajlar Allowed.
             - İzin verilen organizasyonun e-ticaret alanında olup henüz mevcut yeteneklerde
-              bulunmayan ürün, stok, sipariş gibi talepler yine Allowed. Capability eksikliği
+              bulunmayan operasyon talepleri yine Allowed. Capability eksikliği
               domain dışı anlamına gelmez; downstream agent bu yeteneğe sahip olmayabilir.
             - İzin verilenler dışındaki organizasyonlara ilişkin bilgi, müşteri, ürün, satış,
               finans veya operasyon talepleri OutOfScope.

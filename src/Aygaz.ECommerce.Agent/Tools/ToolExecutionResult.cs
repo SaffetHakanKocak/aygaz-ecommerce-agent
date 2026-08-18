@@ -56,6 +56,34 @@ public sealed record ToolExecutionResult(string Content, ToolExecutionStatus Sta
         return new ToolExecutionResult(content, ToolExecutionStatus.NotFound);
     }
 
+    public static ToolExecutionResult ProductNotFound()
+    {
+        string content = JsonSerializer.Serialize(
+            new
+            {
+                success = true,
+                found = false,
+                message = "Ürün bulunamadı."
+            },
+            JsonOptions);
+
+        return new ToolExecutionResult(content, ToolExecutionStatus.NotFound);
+    }
+
+    public static ToolExecutionResult InventoryNotFound()
+    {
+        string content = JsonSerializer.Serialize(
+            new
+            {
+                success = true,
+                found = false,
+                message = "Ürün için stok kaydı bulunamadı."
+            },
+            JsonOptions);
+
+        return new ToolExecutionResult(content, ToolExecutionStatus.NotFound);
+    }
+
     public static ToolExecutionResult Rejected(string error)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(error);

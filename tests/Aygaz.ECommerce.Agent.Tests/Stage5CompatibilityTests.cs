@@ -34,6 +34,36 @@ public sealed class Stage5CompatibilityTests
         Assert.DoesNotContain("Gerçek Kişi Adı", output.ToString());
     }
 
+    [Theory]
+    [InlineData("AYG-DEMO-PRD-001", "AYG-DEMO-PRD-001")]
+    [InlineData("REAL-SKU-123", "<redacted>")]
+    [InlineData("AYG-DEMO-PRD-ABC", "<redacted>")]
+    public void LogArguments_Sku_OnlyExposesStrictDemoFormat(
+        string sku,
+        string expectedValue)
+    {
+        TextWriter originalOutput = Console.Out;
+        using var output = new StringWriter();
+
+        try
+        {
+            Console.SetOut(output);
+
+            var logger = new ConsoleToolCallLogger();
+            logger.LogArguments("sku", sku);
+        }
+        finally
+        {
+            Console.SetOut(originalOutput);
+        }
+
+        Assert.Contains($"[Args] sku={expectedValue}", output.ToString());
+        if (expectedValue == "<redacted>")
+        {
+            Assert.DoesNotContain(sku, output.ToString());
+        }
+    }
+
     [Fact]
     public void OllamaChatSettings_PositionalContract_RemainsBackwardCompatible()
     {

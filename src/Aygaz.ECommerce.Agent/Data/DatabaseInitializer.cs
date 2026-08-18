@@ -12,6 +12,8 @@ public sealed class DatabaseInitializer(ECommerceDbContext dbContext)
             await dbContext.Database.EnsureCreatedAsync(cancellationToken);
             await SeedCustomersAsync(cancellationToken);
             await SeedOrdersAsync(cancellationToken);
+            await SeedProductsAsync(cancellationToken);
+            await SeedInventoryAsync(cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -100,6 +102,100 @@ public sealed class DatabaseInitializer(ECommerceDbContext dbContext)
         }
 
         dbContext.CustomerOrders.AddRange(missingOrders);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task SeedProductsAsync(CancellationToken cancellationToken)
+    {
+        IReadOnlyList<Product> syntheticProducts = CreateSyntheticProducts();
+        string[] existingSkus = await dbContext.Products
+            .AsNoTracking()
+            .Select(product => product.Sku)
+            .ToArrayAsync(cancellationToken);
+        var existingSkuSet = new HashSet<string>(
+            existingSkus,
+            StringComparer.OrdinalIgnoreCase);
+
+        Product[] missingProducts = syntheticProducts
+            .Where(product => !existingSkuSet.Contains(product.Sku))
+            .ToArray();
+
+        if (missingProducts.Length == 0)
+        {
+            return;
+        }
+
+        dbContext.Products.AddRange(missingProducts);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task SeedInventoryAsync(CancellationToken cancellationToken)
+    {
+        IReadOnlyList<SyntheticInventorySeed> syntheticInventory =
+            CreateSyntheticInventory();
+
+        var existingInventoryKeys = new HashSet<string>(
+            (await dbContext.InventoryRecords
+                .AsNoTracking()
+                .Select(record => new
+                {
+                    record.Product.Sku,
+                    record.LocationCode
+                })
+                .ToListAsync(cancellationToken))
+            .Select(record => CreateInventoryKey(
+                record.Sku,
+                record.LocationCode)),
+            StringComparer.OrdinalIgnoreCase);
+
+        SyntheticInventorySeed[] missingInventorySeeds = syntheticInventory
+            .Where(seed => !existingInventoryKeys.Contains(
+                CreateInventoryKey(seed.ProductSku, seed.LocationCode)))
+            .ToArray();
+
+        if (missingInventorySeeds.Length == 0)
+        {
+            return;
+        }
+
+        Dictionary<string, int> productIdsBySku = (await dbContext.Products
+                .AsNoTracking()
+                .Select(product => new
+                {
+                    product.Sku,
+                    product.Id
+                })
+                .ToListAsync(cancellationToken))
+            .ToDictionary(
+                product => product.Sku,
+                product => product.Id,
+                StringComparer.OrdinalIgnoreCase);
+
+        var missingInventory = new List<InventoryRecord>(
+            missingInventorySeeds.Length);
+
+        foreach (SyntheticInventorySeed seed in missingInventorySeeds)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!productIdsBySku.TryGetValue(seed.ProductSku, out int productId))
+            {
+                throw new InvalidOperationException(
+                    $"Sentetik inventory ürünü bulunamadı: {seed.ProductSku}");
+            }
+
+            missingInventory.Add(new InventoryRecord
+            {
+                ProductId = productId,
+                LocationCode = seed.LocationCode,
+                LocationName = seed.LocationName,
+                QuantityAvailable = seed.QuantityAvailable,
+                ReorderLevel = seed.ReorderLevel,
+                UpdatedAt = seed.UpdatedAt
+            });
+        }
+
+        dbContext.InventoryRecords.AddRange(missingInventory);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
@@ -373,10 +469,107 @@ public sealed class DatabaseInitializer(ECommerceDbContext dbContext)
         ];
     }
 
+    private static IReadOnlyList<Product> CreateSyntheticProducts()
+    {
+        DateTime seedDate = new(2026, 3, 1, 9, 0, 0, DateTimeKind.Utc);
+
+        return
+        [
+            CreateProduct("001", "Alpha", "DemoCategoryA", 125.50m, true, seedDate),
+            CreateProduct("002", "Beta", "DemoCategoryA", 249.90m, true, seedDate.AddDays(1)),
+            CreateProduct("003", "Gamma", "DemoCategoryB", 79.25m, true, seedDate.AddDays(2)),
+            CreateProduct("004", "Delta", "DemoCategoryB", 315.00m, true, seedDate.AddDays(3)),
+            CreateProduct("005", "Epsilon", "DemoCategoryC", 410.40m, false, seedDate.AddDays(4)),
+            CreateProduct("006", "Zeta", "DemoCategoryA", 58.75m, true, seedDate.AddDays(5)),
+            CreateProduct("007", "Eta", "DemoCategoryB", 605.00m, true, seedDate.AddDays(6)),
+            CreateProduct("008", "Theta", "DemoCategoryC", 199.99m, true, seedDate.AddDays(7)),
+            CreateProduct("009", "Iota", "DemoCategoryA", 330.30m, true, seedDate.AddDays(8)),
+            CreateProduct("010", "Kappa", "DemoCategoryA", 45.00m, true, seedDate.AddDays(9)),
+            CreateProduct("011", "Lambda", "DemoCategoryC", 515.15m, true, seedDate.AddDays(10)),
+            CreateProduct("012", "Mu", "DemoCategoryA", 88.80m, true, seedDate.AddDays(11))
+        ];
+    }
+
+    private static Product CreateProduct(
+        string skuSuffix,
+        string nameSuffix,
+        string category,
+        decimal unitPrice,
+        bool isActive,
+        DateTime createdAt)
+    {
+        return new Product
+        {
+            Sku = $"AYG-DEMO-PRD-{skuSuffix}",
+            Name = $"Demo Product {nameSuffix}",
+            Category = category,
+            UnitPrice = unitPrice,
+            IsActive = isActive,
+            CreatedAt = createdAt
+        };
+    }
+
+    private static IReadOnlyList<SyntheticInventorySeed> CreateSyntheticInventory()
+    {
+        DateTime seedDate = new(2026, 3, 20, 10, 0, 0, DateTimeKind.Utc);
+
+        return
+        [
+            CreateInventory("001", "01", "Demo Depo Bir", 120, 20, seedDate),
+            CreateInventory("001", "02", "Demo Depo Iki", 35, 10, seedDate.AddHours(1)),
+            CreateInventory("001", "03", "Demo Depo Uc", 5, 5, seedDate.AddHours(2)),
+            CreateInventory("002", "01", "Demo Depo Bir", 2, 5, seedDate.AddHours(3)),
+            CreateInventory("003", "02", "Demo Depo Iki", 0, 5, seedDate.AddHours(4)),
+            CreateInventory("005", "01", "Demo Depo Bir", 8, 4, seedDate.AddHours(5)),
+            CreateInventory("006", "01", "Demo Depo Bir", 10, 5, seedDate.AddHours(6)),
+            CreateInventory("006", "03", "Demo Depo Uc", 20, 5, seedDate.AddHours(7)),
+            CreateInventory("007", "02", "Demo Depo Iki", 14, 7, seedDate.AddHours(8)),
+            CreateInventory("008", "02", "Demo Depo Iki", 4, 5, seedDate.AddHours(9)),
+            CreateInventory("008", "03", "Demo Depo Uc", 0, 3, seedDate.AddHours(10)),
+            CreateInventory("009", "01", "Demo Depo Bir", 55, 15, seedDate.AddHours(11)),
+            CreateInventory("010", "03", "Demo Depo Uc", 1, 3, seedDate.AddHours(12)),
+            CreateInventory("011", "01", "Demo Depo Bir", 25, 10, seedDate.AddHours(13)),
+            CreateInventory("011", "02", "Demo Depo Iki", 25, 10, seedDate.AddHours(14)),
+            CreateInventory("012", "03", "Demo Depo Uc", 6, 5, seedDate.AddHours(15))
+        ];
+    }
+
+    private static SyntheticInventorySeed CreateInventory(
+        string skuSuffix,
+        string locationSuffix,
+        string locationName,
+        int quantityAvailable,
+        int reorderLevel,
+        DateTime updatedAt)
+    {
+        return new SyntheticInventorySeed(
+            $"AYG-DEMO-PRD-{skuSuffix}",
+            $"DEMO-LOC-{locationSuffix}",
+            locationName,
+            quantityAvailable,
+            reorderLevel,
+            updatedAt);
+    }
+
+    private static string CreateInventoryKey(
+        string productSku,
+        string locationCode)
+    {
+        return $"{productSku}\u001F{locationCode}";
+    }
+
     private sealed record SyntheticOrderSeed(
         string CustomerEmail,
         string OrderNumber,
         DateTime OrderDate,
         OrderStatus Status,
         decimal TotalAmount);
+
+    private sealed record SyntheticInventorySeed(
+        string ProductSku,
+        string LocationCode,
+        string LocationName,
+        int QuantityAvailable,
+        int ReorderLevel,
+        DateTime UpdatedAt);
 }

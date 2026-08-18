@@ -20,21 +20,38 @@ public sealed class CompositeAgentToolExecutorTests
         OrderToolExecutor.GetLatestCustomerOrderToolName
     ];
 
+    private static readonly string[] ProductToolNames =
+    [
+        ProductToolExecutor.GetProductBySkuToolName,
+        ProductToolExecutor.SearchProductsToolName
+    ];
+
+    private static readonly string[] InventoryToolNames =
+    [
+        InventoryToolExecutor.GetProductInventoryToolName,
+        InventoryToolExecutor.GetTotalProductStockToolName
+    ];
+
     [Fact]
-    public void ToolDefinitions_ExposeExactUnionOfSixCustomerAndOrderTools()
+    public void ToolDefinitions_ExposeExactUnionOfTenReadOnlyTools()
     {
         var customerModule = new RecordingToolModule(CustomerToolNames);
         var orderModule = new RecordingToolModule(OrderToolNames);
+        var productModule = new RecordingToolModule(ProductToolNames);
+        var inventoryModule = new RecordingToolModule(InventoryToolNames);
         var executor = new CompositeAgentToolExecutor(
-            [customerModule, orderModule],
+            [customerModule, orderModule, productModule, inventoryModule],
             new RecordingToolCallLogger());
 
-        Assert.Equal(6, executor.ToolDefinitions.Count);
+        Assert.Equal(10, executor.ToolDefinitions.Count);
         Assert.Equal(
-            CustomerToolNames.Concat(OrderToolNames),
+            CustomerToolNames
+                .Concat(OrderToolNames)
+                .Concat(ProductToolNames)
+                .Concat(InventoryToolNames),
             executor.ToolDefinitions.Select(definition => definition.Function.Name));
         Assert.Equal(
-            6,
+            10,
             executor.ToolDefinitions
                 .Select(definition => definition.Function.Name)
                 .Distinct(StringComparer.Ordinal)
@@ -42,24 +59,37 @@ public sealed class CompositeAgentToolExecutorTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_KnownCustomerAndOrderTools_DispatchOnlyToOwningModule()
+    public async Task ExecuteAsync_KnownTools_DispatchOnlyToOwningModule()
     {
         ToolExecutionResult customerResult =
             ToolExecutionResult.FromSuccess(new { id = 1 });
         ToolExecutionResult orderResult =
             ToolExecutionResult.FromSuccess(new { orderNumber = "AYG-DEMO-1004" });
+        ToolExecutionResult productResult =
+            ToolExecutionResult.FromSuccess(new { sku = "AYG-DEMO-PRD-001" });
+        ToolExecutionResult inventoryResult =
+            ToolExecutionResult.FromSuccess(new { totalQuantityAvailable = 160 });
         var customerModule = new RecordingToolModule(
             CustomerToolNames,
             customerResult);
         var orderModule = new RecordingToolModule(
             OrderToolNames,
             orderResult);
+        var productModule = new RecordingToolModule(
+            ProductToolNames,
+            productResult);
+        var inventoryModule = new RecordingToolModule(
+            InventoryToolNames,
+            inventoryResult);
         var executor = new CompositeAgentToolExecutor(
-            [customerModule, orderModule],
+            [customerModule, orderModule, productModule, inventoryModule],
             new RecordingToolCallLogger());
         JsonElement customerArguments = ParseJson(
             """{"email":"ahmet.yilmaz@example.com"}""");
         JsonElement orderArguments = ParseJson("""{"customerId":1}""");
+        JsonElement productArguments = ParseJson(
+            """{"sku":"AYG-DEMO-PRD-001"}""");
+        JsonElement inventoryArguments = ParseJson("""{"productId":1}""");
 
         ToolExecutionResult actualCustomerResult = await executor.ExecuteAsync(
             CustomerToolExecutor.GetCustomerByEmailToolName,
@@ -67,9 +97,17 @@ public sealed class CompositeAgentToolExecutorTests
         ToolExecutionResult actualOrderResult = await executor.ExecuteAsync(
             OrderToolExecutor.GetLatestCustomerOrderToolName,
             orderArguments);
+        ToolExecutionResult actualProductResult = await executor.ExecuteAsync(
+            ProductToolExecutor.GetProductBySkuToolName,
+            productArguments);
+        ToolExecutionResult actualInventoryResult = await executor.ExecuteAsync(
+            InventoryToolExecutor.GetTotalProductStockToolName,
+            inventoryArguments);
 
         Assert.Same(customerResult, actualCustomerResult);
         Assert.Same(orderResult, actualOrderResult);
+        Assert.Same(productResult, actualProductResult);
+        Assert.Same(inventoryResult, actualInventoryResult);
         ToolInvocation customerCall = Assert.Single(customerModule.Calls);
         Assert.Equal(CustomerToolExecutor.GetCustomerByEmailToolName, customerCall.ToolName);
         Assert.Equal(
@@ -78,6 +116,14 @@ public sealed class CompositeAgentToolExecutorTests
         ToolInvocation orderCall = Assert.Single(orderModule.Calls);
         Assert.Equal(OrderToolExecutor.GetLatestCustomerOrderToolName, orderCall.ToolName);
         Assert.Equal(1, orderCall.Arguments.GetProperty("customerId").GetInt32());
+        ToolInvocation productCall = Assert.Single(productModule.Calls);
+        Assert.Equal(ProductToolExecutor.GetProductBySkuToolName, productCall.ToolName);
+        Assert.Equal(
+            "AYG-DEMO-PRD-001",
+            productCall.Arguments.GetProperty("sku").GetString());
+        ToolInvocation inventoryCall = Assert.Single(inventoryModule.Calls);
+        Assert.Equal(InventoryToolExecutor.GetTotalProductStockToolName, inventoryCall.ToolName);
+        Assert.Equal(1, inventoryCall.Arguments.GetProperty("productId").GetInt32());
     }
 
     [Theory]
@@ -86,6 +132,12 @@ public sealed class CompositeAgentToolExecutorTests
     [InlineData("get_all_orders")]
     [InlineData("create_order")]
     [InlineData("delete_order")]
+    [InlineData("get_all_products")]
+    [InlineData("get_all_inventory")]
+    [InlineData("set_stock")]
+    [InlineData("change_price")]
+    [InlineData("delete_product")]
+    [InlineData("raw_inventory_query")]
     [InlineData("execute_sql")]
     [InlineData("Get_Order_By_Number")]
     public async Task ExecuteAsync_UnknownWriteBulkOrSqlTool_IsRejectedWithoutModuleCall(
@@ -93,9 +145,11 @@ public sealed class CompositeAgentToolExecutorTests
     {
         var customerModule = new RecordingToolModule(CustomerToolNames);
         var orderModule = new RecordingToolModule(OrderToolNames);
+        var productModule = new RecordingToolModule(ProductToolNames);
+        var inventoryModule = new RecordingToolModule(InventoryToolNames);
         var logger = new RecordingToolCallLogger();
         var executor = new CompositeAgentToolExecutor(
-            [customerModule, orderModule],
+            [customerModule, orderModule, productModule, inventoryModule],
             logger);
 
         ToolExecutionResult result = await executor.ExecuteAsync(
@@ -105,6 +159,8 @@ public sealed class CompositeAgentToolExecutorTests
         Assert.Equal(ToolExecutionStatus.Rejected, result.Status);
         Assert.Empty(customerModule.Calls);
         Assert.Empty(orderModule.Calls);
+        Assert.Empty(productModule.Calls);
+        Assert.Empty(inventoryModule.Calls);
         Assert.Equal(toolName, Assert.Single(logger.ToolNames));
         Assert.Equal(ToolExecutionStatus.Rejected, Assert.Single(logger.Results));
 
