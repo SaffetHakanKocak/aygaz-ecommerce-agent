@@ -78,7 +78,11 @@ public sealed class OllamaAgentServiceTests
 
         Assert.All(
             chatClient.Calls,
-            call => Assert.Same(toolExecutor.ToolDefinitions, call.Tools));
+            call =>
+            {
+                OllamaChatSettings settings = Assert.IsType<OllamaChatSettings>(call.Settings);
+                Assert.Same(toolExecutor.ToolDefinitions, settings.Tools);
+            });
     }
 
     [Fact]
@@ -268,11 +272,11 @@ public sealed class OllamaAgentServiceTests
 
         public Task<OllamaChatMessage> ChatAsync(
             IReadOnlyCollection<OllamaChatMessage> messages,
-            IReadOnlyCollection<OllamaToolDefinition>? tools = null,
+            OllamaChatSettings? settings = null,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Calls.Add(new ChatInvocation(messages.ToArray(), tools));
+            Calls.Add(new ChatInvocation(messages.ToArray(), settings));
 
             if (_responses.Count == 0)
             {
@@ -329,7 +333,7 @@ public sealed class OllamaAgentServiceTests
 
     private sealed record ChatInvocation(
         IReadOnlyList<OllamaChatMessage> Messages,
-        IReadOnlyCollection<OllamaToolDefinition>? Tools);
+        OllamaChatSettings? Settings);
 
     private sealed record ToolInvocation(string? ToolName, JsonElement Arguments);
 }

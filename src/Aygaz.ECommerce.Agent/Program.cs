@@ -49,10 +49,14 @@ internal static class Program
         {
             bool isAgentConfiguration = exception.Failures.Any(
                 failure => failure.StartsWith("Agent:", StringComparison.Ordinal));
+            bool isGuardrailConfiguration = exception.Failures.Any(
+                failure => failure.StartsWith("DomainGuardrail:", StringComparison.Ordinal));
 
-            Console.Error.WriteLine(isAgentConfiguration
-                ? "Agent yapılandırması geçersiz."
-                : "Ollama yapılandırması geçersiz.");
+            Console.Error.WriteLine(isGuardrailConfiguration
+                ? "Domain guardrail yapılandırması geçersiz."
+                : isAgentConfiguration
+                    ? "Agent yapılandırması geçersiz."
+                    : "Ollama yapılandırması geçersiz.");
             Console.Error.WriteLine($"Teknik detay: {exception.Message}");
             return 1;
         }
@@ -82,6 +86,7 @@ internal static class Program
         builder.Logging.ClearProviders();
         builder.Services.AddLocalLlm(builder.Configuration);
         builder.Services.AddCustomerData(builder.Configuration);
+        builder.Services.AddDomainGuardrails(builder.Configuration);
         builder.Services.AddCustomerAgent(builder.Configuration);
 
         return builder.Build();

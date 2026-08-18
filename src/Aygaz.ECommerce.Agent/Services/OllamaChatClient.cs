@@ -24,7 +24,7 @@ public sealed class OllamaChatClient : IOllamaChatClient
 
     public async Task<OllamaChatMessage> ChatAsync(
         IReadOnlyCollection<OllamaChatMessage> messages,
-        IReadOnlyCollection<OllamaToolDefinition>? tools = null,
+        OllamaChatSettings? settings = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(messages);
@@ -42,8 +42,10 @@ public sealed class OllamaChatClient : IOllamaChatClient
             Options: new OllamaRuntimeOptions(
                 _options.GpuLayers,
                 _options.ContextSize,
-                _options.MaxOutputTokens),
-            Tools: tools);
+                settings?.MaxOutputTokens ?? _options.MaxOutputTokens,
+                settings?.Temperature),
+            Tools: settings?.Tools,
+            Format: settings?.Format);
 
         try
         {

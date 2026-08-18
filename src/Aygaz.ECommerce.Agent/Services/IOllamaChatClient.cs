@@ -6,6 +6,6 @@ public interface IOllamaChatClient
 {
     Task<OllamaChatMessage> ChatAsync(
         IReadOnlyCollection<OllamaChatMessage> messages,
-        IReadOnlyCollection<OllamaToolDefinition>? tools = null,
+        OllamaChatSettings? settings = null,
         CancellationToken cancellationToken = default);
 }

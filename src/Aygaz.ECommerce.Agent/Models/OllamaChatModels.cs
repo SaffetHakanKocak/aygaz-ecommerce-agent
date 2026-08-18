@@ -3,6 +3,12 @@ using System.Text.Json.Serialization;
 
 namespace Aygaz.ECommerce.Agent.Models;
 
+public sealed record OllamaChatSettings(
+    IReadOnlyCollection<OllamaToolDefinition>? Tools = null,
+    JsonElement? Format = null,
+    double? Temperature = null,
+    int? MaxOutputTokens = null);
+
 public sealed record OllamaChatRequest(
     [property: JsonPropertyName("model")] string Model,
     [property: JsonPropertyName("messages")] IReadOnlyCollection<OllamaChatMessage> Messages,
@@ -11,12 +17,18 @@ public sealed record OllamaChatRequest(
     [property: JsonPropertyName("options")] OllamaRuntimeOptions Options,
     [property: JsonPropertyName("tools")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyCollection<OllamaToolDefinition>? Tools = null);
+    IReadOnlyCollection<OllamaToolDefinition>? Tools = null,
+    [property: JsonPropertyName("format")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    JsonElement? Format = null);
 
 public sealed record OllamaRuntimeOptions(
     [property: JsonPropertyName("num_gpu")] int GpuLayers,
     [property: JsonPropertyName("num_ctx")] int ContextSize,
-    [property: JsonPropertyName("num_predict")] int MaxOutputTokens);
+    [property: JsonPropertyName("num_predict")] int MaxOutputTokens,
+    [property: JsonPropertyName("temperature")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    double? Temperature = null);
 
 public sealed record OllamaChatMessage(
     [property: JsonPropertyName("role")] string Role,

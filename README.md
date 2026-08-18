@@ -1,6 +1,6 @@
 # Aygaz E-Commerce AI Agent
 
-Kontrollü C# servisleriyle genişletilen yerel bir e-ticaret Agentic AI geliştirme projesidir. Aşama 1'de local Ollama bağlantısı, Aşama 2'de tamamen sentetik Customer veri katmanı, Aşama 3'te ise native Ollama tool calling kullanan Customer AI Agent tamamlanmıştır.
+Kontrollü C# servisleriyle genişletilen yerel bir e-ticaret Agentic AI geliştirme projesidir. Aşama 1'de local Ollama bağlantısı, Aşama 2'de tamamen sentetik Customer veri katmanı, Aşama 3'te native Ollama tool calling kullanan Customer AI Agent ve Aşama 4'te merkezi Aygaz domain guardrail katmanı tamamlanmıştır.
 
 ## Teknolojiler ve gereksinimler
 
@@ -44,7 +44,53 @@ Ana menü seçenekleri:
 
 Customer test menüsünde tüm müşteriler listelenebilir; ID, e-posta veya ad/soyad ile sorgulama yapılabilir. Bu menü yalnızca geliştirme ve test amaçlıdır.
 
-Customer AI Agent menüsünde doğal dilde müşteri sorguları yazılabilir. `back` ana menüye döner, `exit` uygulamayı kapatır.
+Customer AI Agent menüsünde doğal dilde müşteri sorguları yazılabilir. Her mesaj agent'tan önce domain guardrail tarafından sınıflandırılır. `back` ana menüye döner, `exit` uygulamayı kapatır.
+
+## Aygaz domain guardrail ve scope control
+
+Aşama 4'te kullanıcı girdisi doğrudan Customer AI Agent'a ulaşmaz. Önce ayrı ve tool kullanmayan bir classifier tarafından merkezi policy'ye göre değerlendirilir:
+
+```text
+User input
+   ↓
+DomainGuardrailService
+   ├── Allowed    → OllamaAgentService → mevcut tool allow-list
+   ├── OutOfScope → sabit C# kapsam cevabı
+   └── Ambiguous  → sabit C# netleştirme cevabı
+```
+
+Ana güvenlik sınırı yalnızca system prompt değildir. `DomainGuardedAgentService`, `OutOfScope`, `Ambiguous`, bozuk classifier cevabı veya classifier hatası durumunda raw agent'ı çağırmaz. Agent prompt'undaki scope hatırlatması yalnız defense-in-depth katmanıdır.
+
+Kararlar:
+
+- `Allowed`: Aygaz e-ticaret isteği, sentetik müşteri sorgusu veya kısa selamlama
+- `OutOfScope`: başka organizasyonlara ait talepler ya da e-ticaret domain'iyle ilgisiz genel konular
+- `Ambiguous`: Aygaz e-ticaret bağlantısı güvenilir biçimde belirlenemeyen talepler
+
+Classifier, kullanıcı girdisini ayrı ve güvenilmeyen `user` mesajı olarak alır. Ollama'ya hiçbir tool gönderilmez; `temperature: 0`, kısa output limiti ve yalnız `Allowed | OutOfScope | Ambiguous` kabul eden JSON schema kullanılır. Parse edilemeyen veya bilinmeyen her cevap `Ambiguous` ile fail-closed sonuçlanır. Guardrail logu yalnız karar ve kapalı reason code içerir; raw kullanıcı mesajını yazmaz.
+
+Scope policy'si `appsettings.json` içindeki `DomainGuardrail` bölümünde merkezidir:
+
+- `Domain`
+- `AllowedOrganizations`
+- `AllowedCapabilities`
+- classifier input/output limitleri
+
+Rakip şirket adlarından oluşan bir blacklist veya keyword router kullanılmaz. Policy ileride yeni organizasyon ve capability değerleriyle genişletilebilir.
+
+Domain ve capability farklı kavramlardır. `Aygaz ürün stoklarını göster` Aygaz e-ticaret domain'inde olduğu için `Allowed` olabilir; ancak Inventory tool'u henüz bulunmadığından agent bu veriyi sağlayamadığını söyler ve stok uydurmaz. Başka bir organizasyonun stok talebi ise `OutOfScope` olur. Domain guardrail konu uygunluğunu, Stage 3 tool allow-list'i ise hangi işlemin yetkili olduğunu bağımsız olarak denetler.
+
+Örnekler:
+
+```text
+Allowed:    ahmet.yilmaz@example.com müşterisi kim?
+Allowed:    Aygaz ürün stoklarını göster.  (capability henüz yok)
+OutOfScope: Arçelik hakkında bilgi ver.
+OutOfScope: Bugünkü futbol maçlarını anlat.
+Ambiguous:  Bunun durumunu kontrol et.
+```
+
+MVP'de her kullanıcı mesajı için ayrı guardrail inference çalışır. `Allowed` isteklerde bunu agent inference'ı izlediğinden toplam iki local LLM çağrısı olabilir. Bu bilinçli güvenlik/performans tradeoff'udur; keyword routing ile bypass edilmez.
 
 ## Customer AI Agent ve native tool calling
 
@@ -94,7 +140,7 @@ nobody@example.com müşterisi kim?
 
 Database dosyası ile SQLite WAL/journal yan dosyaları Git tarafından ignore edilir. Başlangıçta `EnsureCreatedAsync` kullanılır; tablo boşsa seed uygulanır ve tekrar çalıştırmalarda duplicate kayıt eklenmez. Bu MVP yaklaşımı migration çalıştırmaz; ileride şema değişiklikleri migration altyapısıyla yönetilecektir.
 
-Bağlantı dizesi, Ollama ayarları ve `Agent` limitleri `src/Aygaz.ECommerce.Agent/appsettings.json` içinden yönetilir.
+Bağlantı dizesi, Ollama ayarları, `Agent` limitleri ve `DomainGuardrail` policy'si `src/Aygaz.ECommerce.Agent/appsettings.json` içinden yönetilir.
 
 ## Build ve test
 
@@ -104,14 +150,14 @@ dotnet build .\Aygaz.ECommerce.Agent.sln --no-restore
 dotnet test .\Aygaz.ECommerce.Agent.sln --no-build --no-restore
 ```
 
-Testler gerçek SQLite in-memory bağlantısıyla seed idempotency, unique e-posta ve CustomerService sorgularını; elle yazılmış fake'lerle de tool allow-list'ini, argument validation'ını, veri minimizasyonunu ve agent loop mesaj sırasını doğrular. Automated testler local Ollama'ya bağımlı değildir.
+Testler gerçek SQLite in-memory bağlantısıyla seed idempotency, unique e-posta ve CustomerService sorgularını; elle yazılmış fake'lerle de tool allow-list'ini, argument validation'ını, veri minimizasyonunu, agent loop sırasını, strict classifier parsing'i, fail-closed davranışı ve `OutOfScope`/`Ambiguous` durumlarında agent ile tool call sayısının sıfır olduğunu doğrular. Automated testler local Ollama'ya bağımlı değildir.
 
 ## Roadmap
 
 - Aşama 1 — C# + Ollama — **TAMAMLANDI**
 - Aşama 2 — Customer Database — **TAMAMLANDI**
 - Aşama 3 — Local LLM Tool Calling — **TAMAMLANDI**
-- Aşama 4 — Aygaz Domain Guardrails
+- Aşama 4 — Aygaz Domain Guardrails — **TAMAMLANDI**
 - Aşama 5 — Orders
 - Aşama 6 — Products / Inventory
 - Aşama 7 — Sales Analysis

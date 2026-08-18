@@ -30,6 +30,7 @@ public static class AgentServiceCollectionExtensions
         services.AddScoped<IToolCallLogger, ConsoleToolCallLogger>();
         services.AddScoped<IAgentToolExecutor, CustomerToolExecutor>();
         services.AddScoped<IAgentService, OllamaAgentService>();
+        services.AddScoped<IGuardedAgentService, DomainGuardedAgentService>();
         services.AddScoped<ConsoleCustomerAgentRunner>();
 
         return services;

@@ -2,7 +2,7 @@ using Aygaz.ECommerce.Agent.Services;
 
 namespace Aygaz.ECommerce.Agent.Agent;
 
-public sealed class ConsoleCustomerAgentRunner(IAgentService agentService)
+public sealed class ConsoleCustomerAgentRunner(IGuardedAgentService guardedAgentService)
 {
     public async Task<AgentConsoleResult> RunAsync(
         CancellationToken cancellationToken = default)
@@ -45,7 +45,9 @@ public sealed class ConsoleCustomerAgentRunner(IAgentService agentService)
 
             try
             {
-                string answer = await agentService.AskAsync(input.Trim(), cancellationToken);
+                string answer = await guardedAgentService.AskAsync(
+                    input.Trim(),
+                    cancellationToken);
                 Console.WriteLine();
                 Console.WriteLine("Agent:");
                 Console.WriteLine(answer);

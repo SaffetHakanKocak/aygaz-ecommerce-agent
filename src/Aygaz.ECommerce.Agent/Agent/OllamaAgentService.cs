@@ -9,18 +9,23 @@ namespace Aygaz.ECommerce.Agent.Agent;
 public sealed class OllamaAgentService : IAgentService
 {
     private const string SystemPrompt =
-        "Sen Aygaz E-Commerce AI Agent'ın geliştirme ortamındaki müşteri sorgulama " +
-        "asistanısın. Müşteriyle ilgili gerçek verilere kendi bilginden cevap verme. " +
+        "Sen yalnızca Aygaz e-ticaret geliştirme ortamında çalışan müşteri sorgulama " +
+        "asistanısın. Bu istek bir C# domain guardrail tarafından kapsam açısından kontrol " +
+        "edilmiştir; yine de Aygaz e-ticaret kapsamı dışına çıkma. Müşteriyle ilgili gerçek " +
+        "verilere kendi bilginden cevap verme. " +
         "Müşteri bilgisi sorulduğunda yalnızca sana sağlanan customer tool'larını kullan. " +
         "Tool sonucunda olmayan bilgiyi, özellikle telefon bilgisini, uydurma. Müşteri " +
         "bulunamazsa açıkça müşteri bulunamadığını söyle. Birden fazla müşteri bulunursa " +
         "sonuçları kısa biçimde göster veya gerekirse ayırt edici bilgi iste. Sana toplu " +
         "müşteri listeleme aracı verilmemiştir; tüm müşteri tablosunu sunduğunu iddia etme. " +
+        "Aygaz e-ticaret kapsamında olsa bile mevcut tool'ların desteklemediği ürün, stok, " +
+        "sipariş veya başka verileri uydurma; bu yeteneğin henüz mevcut olmadığını söyle. " +
         "Basit selamlaşmalarda tool kullanma. Kısa ve açık Türkçe cevaplar ver. Database, " +
         "SQL veya teknik implementasyon detaylarını normal kullanıcıya anlatma.";
 
     private readonly IOllamaChatClient _chatClient;
     private readonly IAgentToolExecutor _toolExecutor;
+    private readonly OllamaChatSettings _chatSettings;
     private readonly AgentOptions _options;
     private readonly Queue<IReadOnlyList<OllamaChatMessage>> _completedTurns = new();
 
@@ -31,6 +36,7 @@ public sealed class OllamaAgentService : IAgentService
     {
         _chatClient = chatClient;
         _toolExecutor = toolExecutor;
+        _chatSettings = new OllamaChatSettings(Tools: toolExecutor.ToolDefinitions);
         _options = options.Value;
     }
 
@@ -50,7 +56,7 @@ public sealed class OllamaAgentService : IAgentService
 
             OllamaChatMessage assistantMessage = await _chatClient.ChatAsync(
                 messages,
-                _toolExecutor.ToolDefinitions,
+                _chatSettings,
                 cancellationToken);
 
             if (!string.Equals(
