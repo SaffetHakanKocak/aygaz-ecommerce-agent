@@ -224,6 +224,8 @@ public sealed class DomainGuardrailService : IDomainGuardrailService
             - İzin verilen organizasyonların e-ticaret operasyonları Allowed.
             - Organizasyon adı yazılmasa bile sentetik müşteri ID, e-posta, ad, soyad,
               sentetik sipariş numarası, sentetik ürün SKU'su veya demo ürün araması Allowed.
+            - Organizasyon adı yazılmasa bile sentetik satış özeti, en çok satan demo ürünler
+              ve sentetik müşteri alışveriş özeti talepleri Allowed.
             - Selamlama ve kısa conversation-level mesajlar Allowed.
             - İzin verilen organizasyonun e-ticaret alanında olup henüz mevcut yeteneklerde
               bulunmayan operasyon talepleri yine Allowed. Capability eksikliği

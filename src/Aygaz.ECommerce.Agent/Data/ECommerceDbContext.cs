@@ -14,6 +14,8 @@ public sealed class ECommerceDbContext(DbContextOptions<ECommerceDbContext> opti
 
     public DbSet<InventoryRecord> InventoryRecords => Set<InventoryRecord>();
 
+    public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -175,6 +177,51 @@ public sealed class ECommerceDbContext(DbContextOptions<ECommerceDbContext> opti
 
             inventory.HasOne(entity => entity.Product)
                 .WithMany(product => product.InventoryRecords)
+                .HasForeignKey(entity => entity.ProductId)
+                .IsRequired()
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<OrderItem>(orderItem =>
+        {
+            orderItem.ToTable(
+                "OrderItems",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_OrderItems_Quantity_Positive",
+                        "\"Quantity\" > 0");
+                    table.HasCheckConstraint(
+                        "CK_OrderItems_UnitPrice_NonNegative",
+                        "\"UnitPrice\" >= 0");
+                });
+
+            orderItem.HasKey(entity => entity.Id);
+
+            orderItem.Property(entity => entity.Quantity)
+                .IsRequired();
+
+            orderItem.Property(entity => entity.UnitPrice)
+                .HasPrecision(18, 2)
+                .IsRequired();
+
+            orderItem.HasIndex(entity => new
+                {
+                    entity.CustomerOrderId,
+                    entity.ProductId
+                })
+                .IsUnique();
+
+            orderItem.HasIndex(entity => entity.ProductId);
+
+            orderItem.HasOne(entity => entity.CustomerOrder)
+                .WithMany(order => order.OrderItems)
+                .HasForeignKey(entity => entity.CustomerOrderId)
+                .IsRequired()
+                .OnDelete(DeleteBehavior.Restrict);
+
+            orderItem.HasOne(entity => entity.Product)
+                .WithMany(product => product.OrderItems)
                 .HasForeignKey(entity => entity.ProductId)
                 .IsRequired()
                 .OnDelete(DeleteBehavior.Restrict);

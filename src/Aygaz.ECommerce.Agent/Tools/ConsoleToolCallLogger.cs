@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 
 namespace Aygaz.ECommerce.Agent.Tools;
@@ -24,6 +25,13 @@ public sealed class ConsoleToolCallLogger : IToolCallLogger
                 SanitizeSku(argumentValue),
             _ when safeName.Equals("query", StringComparison.OrdinalIgnoreCase) =>
                 "<redacted>",
+            _ when safeName.Equals("customerId", StringComparison.OrdinalIgnoreCase) =>
+                "<redacted>",
+            _ when safeName.Equals("fromDate", StringComparison.OrdinalIgnoreCase)
+                || safeName.Equals("toDate", StringComparison.OrdinalIgnoreCase) =>
+                SanitizeIsoDate(argumentValue),
+            _ when safeName.Equals("limit", StringComparison.OrdinalIgnoreCase) =>
+                SanitizePositiveInteger(argumentValue),
             _ => Sanitize(argumentValue)
         };
 
@@ -97,6 +105,36 @@ public sealed class ConsoleToolCallLogger : IToolCallLogger
         }
 
         return sanitized;
+    }
+
+    private static string SanitizeIsoDate(string? value)
+    {
+        const string IsoDateFormat = "yyyy-MM-dd";
+
+        if (value?.Length != IsoDateFormat.Length
+            || !DateOnly.TryParseExact(
+                value,
+                IsoDateFormat,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out DateOnly date))
+        {
+            return "<redacted>";
+        }
+
+        return date.ToString(IsoDateFormat, CultureInfo.InvariantCulture);
+    }
+
+    private static string SanitizePositiveInteger(string? value)
+    {
+        return int.TryParse(
+                value,
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out int number)
+            && number > 0
+                ? number.ToString(CultureInfo.InvariantCulture)
+                : "<redacted>";
     }
 
     private static string Sanitize(string? value)

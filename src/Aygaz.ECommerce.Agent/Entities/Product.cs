@@ -21,4 +21,6 @@ public sealed class Product
     public DateTime CreatedAt { get; set; }
 
     public ICollection<InventoryRecord> InventoryRecords { get; set; } = [];
+
+    public ICollection<OrderItem> OrderItems { get; set; } = [];
 }

@@ -19,6 +19,13 @@
 *.log
 *~
 appsettings.*.local.json
+.env
+secrets.json
+
+# Local LLM model artifacts
+*.gguf
+*.safetensors
+.ollama/
 
 # Local SQLite databases
 *.db

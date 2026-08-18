@@ -65,6 +65,28 @@ public sealed class Stage5CompatibilityTests
     }
 
     [Fact]
+    public void LogArguments_CustomerId_RedactsInternalIdentifier()
+    {
+        TextWriter originalOutput = Console.Out;
+        using var output = new StringWriter();
+
+        try
+        {
+            Console.SetOut(output);
+
+            var logger = new ConsoleToolCallLogger();
+            logger.LogArguments("customerId", "987654321");
+        }
+        finally
+        {
+            Console.SetOut(originalOutput);
+        }
+
+        Assert.Contains("[Args] customerId=<redacted>", output.ToString());
+        Assert.DoesNotContain("987654321", output.ToString());
+    }
+
+    [Fact]
     public void OllamaChatSettings_PositionalContract_RemainsBackwardCompatible()
     {
         OllamaToolDefinition[] tools = [];

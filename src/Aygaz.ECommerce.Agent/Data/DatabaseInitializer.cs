@@ -13,6 +13,7 @@ public sealed class DatabaseInitializer(ECommerceDbContext dbContext)
             await SeedCustomersAsync(cancellationToken);
             await SeedOrdersAsync(cancellationToken);
             await SeedProductsAsync(cancellationToken);
+            await SeedOrderItemsAsync(cancellationToken);
             await SeedInventoryAsync(cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -196,6 +197,92 @@ public sealed class DatabaseInitializer(ECommerceDbContext dbContext)
         }
 
         dbContext.InventoryRecords.AddRange(missingInventory);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task SeedOrderItemsAsync(CancellationToken cancellationToken)
+    {
+        IReadOnlyList<SyntheticOrderItemSeed> syntheticOrderItems =
+            CreateSyntheticOrderItems();
+
+        var existingOrderItemKeys = new HashSet<string>(
+            (await dbContext.OrderItems
+                .AsNoTracking()
+                .Select(item => new
+                {
+                    item.CustomerOrder.OrderNumber,
+                    item.Product.Sku
+                })
+                .ToListAsync(cancellationToken))
+            .Select(item => CreateOrderItemKey(
+                item.OrderNumber,
+                item.Sku)),
+            StringComparer.OrdinalIgnoreCase);
+
+        SyntheticOrderItemSeed[] missingOrderItemSeeds = syntheticOrderItems
+            .Where(seed => !existingOrderItemKeys.Contains(
+                CreateOrderItemKey(seed.OrderNumber, seed.ProductSku)))
+            .ToArray();
+
+        if (missingOrderItemSeeds.Length == 0)
+        {
+            return;
+        }
+
+        Dictionary<string, int> orderIdsByNumber = (await dbContext.CustomerOrders
+                .AsNoTracking()
+                .Select(order => new
+                {
+                    order.OrderNumber,
+                    order.Id
+                })
+                .ToListAsync(cancellationToken))
+            .ToDictionary(
+                order => order.OrderNumber,
+                order => order.Id,
+                StringComparer.OrdinalIgnoreCase);
+
+        Dictionary<string, int> productIdsBySku = (await dbContext.Products
+                .AsNoTracking()
+                .Select(product => new
+                {
+                    product.Sku,
+                    product.Id
+                })
+                .ToListAsync(cancellationToken))
+            .ToDictionary(
+                product => product.Sku,
+                product => product.Id,
+                StringComparer.OrdinalIgnoreCase);
+
+        var missingOrderItems = new List<OrderItem>(missingOrderItemSeeds.Length);
+
+        foreach (SyntheticOrderItemSeed seed in missingOrderItemSeeds)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!orderIdsByNumber.TryGetValue(seed.OrderNumber, out int orderId))
+            {
+                throw new InvalidOperationException(
+                    $"Sentetik sipariş kalemi siparişi bulunamadı: {seed.OrderNumber}");
+            }
+
+            if (!productIdsBySku.TryGetValue(seed.ProductSku, out int productId))
+            {
+                throw new InvalidOperationException(
+                    $"Sentetik sipariş kalemi ürünü bulunamadı: {seed.ProductSku}");
+            }
+
+            missingOrderItems.Add(new OrderItem
+            {
+                CustomerOrderId = orderId,
+                ProductId = productId,
+                Quantity = seed.Quantity,
+                UnitPrice = seed.UnitPrice
+            });
+        }
+
+        dbContext.OrderItems.AddRange(missingOrderItems);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
@@ -534,6 +621,31 @@ public sealed class DatabaseInitializer(ECommerceDbContext dbContext)
         ];
     }
 
+    private static IReadOnlyList<SyntheticOrderItemSeed> CreateSyntheticOrderItems()
+    {
+        IReadOnlyList<SyntheticOrderSeed> syntheticOrders = CreateSyntheticOrders();
+        var orderItems = new List<SyntheticOrderItemSeed>(syntheticOrders.Count * 2);
+
+        for (int index = 0; index < syntheticOrders.Count; index++)
+        {
+            SyntheticOrderSeed order = syntheticOrders[index];
+            int secondaryProductNumber = (index % 11) + 2;
+
+            orderItems.Add(new SyntheticOrderItemSeed(
+                order.OrderNumber,
+                "AYG-DEMO-PRD-001",
+                3,
+                10.00m));
+            orderItems.Add(new SyntheticOrderItemSeed(
+                order.OrderNumber,
+                $"AYG-DEMO-PRD-{secondaryProductNumber:000}",
+                1,
+                order.TotalAmount - 30.00m));
+        }
+
+        return orderItems;
+    }
+
     private static SyntheticInventorySeed CreateInventory(
         string skuSuffix,
         string locationSuffix,
@@ -558,6 +670,13 @@ public sealed class DatabaseInitializer(ECommerceDbContext dbContext)
         return $"{productSku}\u001F{locationCode}";
     }
 
+    private static string CreateOrderItemKey(
+        string orderNumber,
+        string productSku)
+    {
+        return $"{orderNumber}\u001F{productSku}";
+    }
+
     private sealed record SyntheticOrderSeed(
         string CustomerEmail,
         string OrderNumber,
@@ -572,4 +691,10 @@ public sealed class DatabaseInitializer(ECommerceDbContext dbContext)
         int QuantityAvailable,
         int ReorderLevel,
         DateTime UpdatedAt);
+
+    private sealed record SyntheticOrderItemSeed(
+        string OrderNumber,
+        string ProductSku,
+        int Quantity,
+        decimal UnitPrice);
 }

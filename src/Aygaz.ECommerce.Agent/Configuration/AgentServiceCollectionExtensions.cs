@@ -1,3 +1,4 @@
+using System.Globalization;
 using Aygaz.ECommerce.Agent.Agent;
 using Aygaz.ECommerce.Agent.Tools;
 using Microsoft.Extensions.Configuration;
@@ -11,6 +12,22 @@ public static class AgentServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        services
+            .AddOptions<CommerceOptions>()
+            .Bind(configuration.GetRequiredSection(CommerceOptions.SectionName))
+            .Validate(
+                options => IsValidCurrencyCode(options.CurrencyCode),
+                "Commerce:CurrencyCode üç büyük ASCII harften oluşmalıdır.")
+            .Validate(
+                options => IsValidIsoDate(options.AnalyticsReferenceDate),
+                "Commerce:AnalyticsReferenceDate exact yyyy-MM-dd olmalıdır.")
+            .Validate(
+                options => options.MaximumAnalysisRangeDays is >= 1 and <= 366,
+                "Commerce:MaximumAnalysisRangeDays 1 ile 366 arasında olmalıdır.")
+            .Validate(
+                options => options.MaximumTopProducts is >= 1 and <= 10,
+                "Commerce:MaximumTopProducts 1 ile 10 arasında olmalıdır.");
+
         services
             .AddOptions<AgentOptions>()
             .Bind(configuration.GetRequiredSection(AgentOptions.SectionName))
@@ -41,11 +58,29 @@ public static class AgentServiceCollectionExtensions
         services.AddScoped<IAgentToolModule, OrderToolExecutor>();
         services.AddScoped<IAgentToolModule, ProductToolExecutor>();
         services.AddScoped<IAgentToolModule, InventoryToolExecutor>();
+        services.AddScoped<IAgentToolModule, SalesAnalyticsToolExecutor>();
         services.AddScoped<IAgentToolExecutor, CompositeAgentToolExecutor>();
         services.AddScoped<IAgentService, OllamaAgentService>();
         services.AddScoped<IGuardedAgentService, DomainGuardedAgentService>();
         services.AddScoped<ConsoleCustomerAgentRunner>();
 
         return services;
+    }
+
+    private static bool IsValidCurrencyCode(string? value)
+    {
+        return value is { Length: 3 }
+            && value.All(character => character is >= 'A' and <= 'Z');
+    }
+
+    private static bool IsValidIsoDate(string? value)
+    {
+        return value?.Length == "yyyy-MM-dd".Length
+            && DateOnly.TryParseExact(
+                value,
+                "yyyy-MM-dd",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out _);
     }
 }

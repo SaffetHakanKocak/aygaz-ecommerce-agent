@@ -317,6 +317,125 @@ public sealed class OllamaAgentServiceTests
     }
 
     [Fact]
+    public async Task AskAsync_CustomerThenSales_UsesThreeModelResponsesAndExactToolHistory()
+    {
+        var customerToolCall = new OllamaToolCall(
+            "call-customer-search",
+            new OllamaToolCallFunction(
+                Name: CustomerToolExecutor.SearchCustomersByNameToolName,
+                Arguments: ParseJson("""{"query":"Ahmet Yilmaz"}""")));
+        var salesToolCall = new OllamaToolCall(
+            "call-customer-sales",
+            new OllamaToolCallFunction(
+                Name: SalesAnalyticsToolExecutor.GetCustomerPurchaseSummaryToolName,
+                Arguments: ParseJson(
+                    """{"customerId":1,"fromDate":"2025-12-07","toDate":"2026-03-06"}""")));
+        var customerAssistantMessage = new OllamaChatMessage(
+            "assistant",
+            null,
+            [customerToolCall]);
+        var salesAssistantMessage = new OllamaChatMessage(
+            "assistant",
+            null,
+            [salesToolCall]);
+        var finalAssistantMessage = new OllamaChatMessage(
+            "assistant",
+            "Ahmet Yilmaz 3 sipariste 2941.00 TRY harcadi.");
+        var chatClient = new RecordingOllamaChatClient(
+            customerAssistantMessage,
+            salesAssistantMessage,
+            finalAssistantMessage);
+        ToolExecutionResult customerResult = ToolExecutionResult.FromSuccess(
+            new[]
+            {
+                new
+                {
+                    id = 1,
+                    firstName = "Ahmet",
+                    lastName = "Yilmaz",
+                    email = "ahmet.yilmaz@example.com",
+                    city = "Istanbul"
+                }
+            });
+        ToolExecutionResult salesResult = ToolExecutionResult.FromSuccess(
+            new
+            {
+                orderCount = 3,
+                totalSpent = 2941.00m,
+                itemsPurchased = 12L,
+                currencyCode = "TRY"
+            });
+        var toolExecutor = new RecordingAgentToolExecutor(
+            customerResult,
+            salesResult);
+        var agent = CreateAgent(chatClient, toolExecutor);
+
+        string answer = await agent.AskAsync(
+            "  Ahmet Yilmaz son 90 gunde ne kadar alisveris yapti?  ");
+
+        Assert.Equal("Ahmet Yilmaz 3 sipariste 2941.00 TRY harcadi.", answer);
+        Assert.Equal(3, chatClient.Calls.Count);
+        Assert.Equal(
+            new[]
+            {
+                CustomerToolExecutor.SearchCustomersByNameToolName,
+                SalesAnalyticsToolExecutor.GetCustomerPurchaseSummaryToolName
+            },
+            toolExecutor.Calls.Select(call => call.ToolName));
+        Assert.Equal(
+            "Ahmet Yilmaz",
+            toolExecutor.Calls[0].Arguments.GetProperty("query").GetString());
+        JsonElement salesArguments = toolExecutor.Calls[1].Arguments;
+        Assert.Equal(1, salesArguments.GetProperty("customerId").GetInt32());
+        Assert.Equal("2025-12-07", salesArguments.GetProperty("fromDate").GetString());
+        Assert.Equal("2026-03-06", salesArguments.GetProperty("toDate").GetString());
+
+        ChatInvocation firstRequest = chatClient.Calls[0];
+        Assert.Equal(
+            new[] { "system", "user" },
+            firstRequest.Messages.Select(message => message.Role));
+        Assert.Equal(
+            "Ahmet Yilmaz son 90 gunde ne kadar alisveris yapti?",
+            firstRequest.Messages[1].Content);
+
+        ChatInvocation secondRequest = chatClient.Calls[1];
+        Assert.Equal(
+            new[] { "system", "user", "assistant", "tool" },
+            secondRequest.Messages.Select(message => message.Role));
+        Assert.Equal(customerAssistantMessage, secondRequest.Messages[2]);
+        Assert.Equal("tool", secondRequest.Messages[3].Role);
+        Assert.Equal(
+            CustomerToolExecutor.SearchCustomersByNameToolName,
+            secondRequest.Messages[3].ToolName);
+        Assert.Equal("call-customer-search", secondRequest.Messages[3].ToolCallId);
+        Assert.Equal(customerResult.Content, secondRequest.Messages[3].Content);
+        Assert.Null(secondRequest.Messages[3].ToolCalls);
+
+        ChatInvocation thirdRequest = chatClient.Calls[2];
+        Assert.Equal(
+            new[] { "system", "user", "assistant", "tool", "assistant", "tool" },
+            thirdRequest.Messages.Select(message => message.Role));
+        Assert.Equal(customerAssistantMessage, thirdRequest.Messages[2]);
+        Assert.Equal(secondRequest.Messages[3], thirdRequest.Messages[3]);
+        Assert.Equal(salesAssistantMessage, thirdRequest.Messages[4]);
+        Assert.Equal("tool", thirdRequest.Messages[5].Role);
+        Assert.Equal(
+            SalesAnalyticsToolExecutor.GetCustomerPurchaseSummaryToolName,
+            thirdRequest.Messages[5].ToolName);
+        Assert.Equal("call-customer-sales", thirdRequest.Messages[5].ToolCallId);
+        Assert.Equal(salesResult.Content, thirdRequest.Messages[5].Content);
+        Assert.Null(thirdRequest.Messages[5].ToolCalls);
+
+        Assert.All(
+            chatClient.Calls,
+            call =>
+            {
+                OllamaChatSettings settings = Assert.IsType<OllamaChatSettings>(call.Settings);
+                Assert.Same(toolExecutor.ToolDefinitions, settings.Tools);
+            });
+    }
+
+    [Fact]
     public async Task AskAsync_NoToolCall_ReturnsFinalContentWithoutCallingExecutor()
     {
         var chatClient = new RecordingOllamaChatClient(
@@ -531,6 +650,19 @@ public sealed class OllamaAgentServiceTests
             new OllamaToolDefinition(
                 "function",
                 new OllamaToolFunctionDefinition(
+                    CustomerToolExecutor.SearchCustomersByNameToolName,
+                    "Test customer search tool",
+                    new OllamaToolParameters(
+                        "object",
+                        new Dictionary<string, OllamaToolProperty>
+                        {
+                            ["query"] = new("string", "Test customer name")
+                        },
+                        ["query"],
+                        AdditionalProperties: false))),
+            new OllamaToolDefinition(
+                "function",
+                new OllamaToolFunctionDefinition(
                     CustomerToolExecutor.GetCustomerByEmailToolName,
                     "Test tool",
                     new OllamaToolParameters(
@@ -579,6 +711,21 @@ public sealed class OllamaAgentServiceTests
                             ["productId"] = new("integer", "Test product id")
                         },
                         ["productId"],
+                        AdditionalProperties: false))),
+            new OllamaToolDefinition(
+                "function",
+                new OllamaToolFunctionDefinition(
+                    SalesAnalyticsToolExecutor.GetCustomerPurchaseSummaryToolName,
+                    "Test customer sales tool",
+                    new OllamaToolParameters(
+                        "object",
+                        new Dictionary<string, OllamaToolProperty>
+                        {
+                            ["customerId"] = new("integer", "Test customer id"),
+                            ["fromDate"] = new("string", "Test from date"),
+                            ["toDate"] = new("string", "Test to date")
+                        },
+                        ["customerId", "fromDate", "toDate"],
                         AdditionalProperties: false)))
         ];
 

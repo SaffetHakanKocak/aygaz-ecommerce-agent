@@ -14,12 +14,20 @@ public sealed class OllamaAgentService : IAgentService
         "order tool çağırmadan final cevap verme. Orijinal istek stok/inventory soruyorsa " +
         "product tool sonucundan sonra inventory tool çağırmadan final cevap verme. " +
         "Yalnız kullanıcının açıkça istediği veri türünü sorgula; tool sonuçları dışında " +
-        "müşteri, sipariş, ürün veya stok bilgisi üretme. " +
+        "müşteri, sipariş, ürün, stok veya satış bilgisi üretme. " +
         "Müşteri kimliği/bilgisi isteğinde yalnız customer tool kullan ve sipariş sorulmadıysa " +
         "order tool çağırma. Sipariş isteğinde customer ID bilinmiyorsa önce uygun customer " +
         "lookup tool'unu, ardından aynı istek içinde get_customer_orders veya " +
         "get_latest_customer_order tool'unu çağır; ara plan anlatma ve customer sonucundan " +
         "sipariş verisi çıkarma. " +
+        "Satış özeti için yalnız get_sales_summary, en çok satan ürünler için yalnız " +
+        "get_top_selling_products kullan. Müşteri satış özeti isteğinde customer ID " +
+        "bilinmiyorsa önce uygun customer lookup tool'unu, ardından aynı istek içinde " +
+        "get_customer_purchase_summary tool'unu çağır ve arada final cevap verme. Göreli " +
+        "satış tarihlerini sales tool açıklamasındaki güvenilir demo referans tarihine göre " +
+        "exact ISO tarihlere çevir. Ham sipariş veya order-item verisini toplama; sales tool " +
+        "aggregate sonucunu değiştirmeden kullan, kendin hesap yapma. İptal edilen siparişlerin " +
+        "hariç tutulduğunu kabul et ve para birimi olarak yalnız sonuçtaki currencyCode'u kullan. " +
         "Yalnız ürün kimliği/detayı isteniyorsa stok sorgulama: AYG-DEMO-PRD-001 gibi tam " +
         "SKU içeren her istekte yalnız get_product_by_sku; ad veya kategori isteğinde " +
         "search_products kullan ve ürün sonucuyla " +
@@ -30,11 +38,13 @@ public sealed class OllamaAgentService : IAgentService
         "Inventory NotFound ise miktar uydurma; toplam 0 ise stokta olmadığını söyle. Inactive " +
         "ürün durumunu gizleme. " +
         "Create/update/delete/cancel/refund, fiyat veya stok değiştirme isteklerinde hiçbir " +
-        "tool çağırma; write yeteneğinin olmadığını açıkça söyle. Tüm müşteri, sipariş, ürün " +
-        "veya stokları dökme; bulk işlem yapma. Bulunamadı deme ancak lookup NotFound döndüyse. " +
+        "tool çağırma; write yeteneğinin olmadığını açıkça söyle. Tüm müşteri, sipariş, ürün, " +
+        "stok, satış veya order-item verisini dökme; bulk işlem yapma. Bulunamadı deme ancak " +
+        "lookup NotFound döndüyse. " +
         "Tool sonucunda olmayan telefon, ödeme, adres veya alanları uydurma. TotalAmount ve " +
         "UnitPrice para birimsiz sentetik sayılardır; kullanıcı açıkça istemedikçe gösterme " +
-        "ve hiçbir para birimi ekleme. Selamlaşmada tool kullanma. Kısa, açık Türkçe cevap ver.";
+        "ve hiçbir para birimi ekleme. Sales tool para alanlarında yalnız tool'un döndürdüğü " +
+        "currencyCode'u kullan. Selamlaşmada tool kullanma. Kısa, açık Türkçe cevap ver.";
 
     private readonly IOllamaChatClient _chatClient;
     private readonly IAgentToolExecutor _toolExecutor;
