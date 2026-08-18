@@ -32,12 +32,14 @@ public static class ServiceCollectionExtensions
                 options => options.MaxOutputTokens > 0,
                 "Ollama:MaxOutputTokens sıfırdan büyük olmalıdır.");
 
-        services.AddHttpClient<ILocalLlmService, OllamaLlmService>((serviceProvider, httpClient) =>
+        services.AddHttpClient<IOllamaChatClient, OllamaChatClient>((serviceProvider, httpClient) =>
         {
             OllamaOptions options = serviceProvider.GetRequiredService<IOptions<OllamaOptions>>().Value;
             httpClient.BaseAddress = new Uri($"{options.BaseUrl.TrimEnd('/')}/");
             httpClient.Timeout = RequestTimeout;
         });
+
+        services.AddTransient<ILocalLlmService, OllamaLlmService>();
 
         return services;
     }

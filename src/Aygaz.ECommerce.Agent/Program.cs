@@ -1,4 +1,5 @@
 using System.Text;
+using Aygaz.ECommerce.Agent.Agent;
 using Aygaz.ECommerce.Agent.Configuration;
 using Aygaz.ECommerce.Agent.Data;
 using Aygaz.ECommerce.Agent.Services;
@@ -46,7 +47,12 @@ internal static class Program
         }
         catch (OptionsValidationException exception)
         {
-            Console.Error.WriteLine("Ollama yapılandırması geçersiz.");
+            bool isAgentConfiguration = exception.Failures.Any(
+                failure => failure.StartsWith("Agent:", StringComparison.Ordinal));
+
+            Console.Error.WriteLine(isAgentConfiguration
+                ? "Agent yapılandırması geçersiz."
+                : "Ollama yapılandırması geçersiz.");
             Console.Error.WriteLine($"Teknik detay: {exception.Message}");
             return 1;
         }
@@ -76,6 +82,7 @@ internal static class Program
         builder.Logging.ClearProviders();
         builder.Services.AddLocalLlm(builder.Configuration);
         builder.Services.AddCustomerData(builder.Configuration);
+        builder.Services.AddCustomerAgent(builder.Configuration);
 
         return builder.Build();
     }
@@ -110,12 +117,15 @@ internal static class Program
             switch (selection?.Trim())
             {
                 case "1":
+                {
                     var localLlmService =
                         serviceProvider.GetRequiredService<ILocalLlmService>();
                     PrintLocalLlmHeader();
                     await RunChatLoopAsync(localLlmService, cancellationToken);
                     break;
+                }
                 case "2":
+                {
                     await using (AsyncServiceScope scope = serviceProvider.CreateAsyncScope())
                     {
                         var runner = scope.ServiceProvider
@@ -124,11 +134,26 @@ internal static class Program
                     }
 
                     break;
+                }
+                case "3":
+                {
+                    await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+                    var runner = scope.ServiceProvider
+                        .GetRequiredService<ConsoleCustomerAgentRunner>();
+                    AgentConsoleResult result = await runner.RunAsync(cancellationToken);
+
+                    if (result == AgentConsoleResult.ExitApplication)
+                    {
+                        return;
+                    }
+
+                    break;
+                }
                 case "0":
                 case null:
                     return;
                 default:
-                    Console.WriteLine("Geçersiz seçim. Lütfen 0, 1 veya 2 girin.");
+                    Console.WriteLine("Geçersiz seçim. Lütfen 0, 1, 2 veya 3 girin.");
                     Console.WriteLine();
                     break;
             }
@@ -196,6 +221,7 @@ internal static class Program
         Console.WriteLine();
         Console.WriteLine("1 - Local LLM Test");
         Console.WriteLine("2 - Customer Database Test");
+        Console.WriteLine("3 - Customer AI Agent");
         Console.WriteLine("0 - Exit");
         Console.WriteLine();
         Console.WriteLine("Seçiminiz:");
