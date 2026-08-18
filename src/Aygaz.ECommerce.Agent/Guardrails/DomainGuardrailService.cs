@@ -222,8 +222,8 @@ public sealed class DomainGuardrailService : IDomainGuardrailService
 
             Karar kuralları:
             - İzin verilen organizasyonların e-ticaret operasyonları Allowed.
-            - Organizasyon adı yazılmasa bile sentetik müşteri ID, e-posta, ad veya soyad
-              sorguları Allowed.
+            - Organizasyon adı yazılmasa bile sentetik müşteri ID, e-posta, ad, soyad veya
+              sentetik sipariş numarası sorguları Allowed.
             - Selamlama ve kısa conversation-level mesajlar Allowed.
             - İzin verilen organizasyonun e-ticaret alanında olup henüz mevcut yeteneklerde
               bulunmayan ürün, stok, sipariş gibi talepler yine Allowed. Capability eksikliği

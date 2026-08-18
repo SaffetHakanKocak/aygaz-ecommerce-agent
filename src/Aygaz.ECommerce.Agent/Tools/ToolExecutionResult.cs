@@ -42,6 +42,20 @@ public sealed record ToolExecutionResult(string Content, ToolExecutionStatus Sta
         return new ToolExecutionResult(content, ToolExecutionStatus.NotFound);
     }
 
+    public static ToolExecutionResult OrderNotFound()
+    {
+        string content = JsonSerializer.Serialize(
+            new
+            {
+                success = true,
+                found = false,
+                message = "Sipariş bulunamadı."
+            },
+            JsonOptions);
+
+        return new ToolExecutionResult(content, ToolExecutionStatus.NotFound);
+    }
+
     public static ToolExecutionResult Rejected(string error)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(error);

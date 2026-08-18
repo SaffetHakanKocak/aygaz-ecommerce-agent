@@ -10,5 +10,7 @@ public sealed class AgentOptions
 
     public int MaxNameSearchResults { get; init; } = 5;
 
+    public int MaxOrderSearchResults { get; init; } = 5;
+
     public int MaxConversationTurns { get; init; } = 4;
 }

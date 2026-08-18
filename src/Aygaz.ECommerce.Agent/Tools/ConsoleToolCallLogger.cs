@@ -14,9 +14,16 @@ public sealed class ConsoleToolCallLogger : IToolCallLogger
     public void LogArguments(string argumentName, string? argumentValue)
     {
         string safeName = Sanitize(argumentName);
-        string safeValue = safeName.Equals("email", StringComparison.OrdinalIgnoreCase)
-            ? SanitizeEmail(argumentValue)
-            : Sanitize(argumentValue);
+        string safeValue = safeName switch
+        {
+            _ when safeName.Equals("email", StringComparison.OrdinalIgnoreCase) =>
+                SanitizeEmail(argumentValue),
+            _ when safeName.Equals("orderNumber", StringComparison.OrdinalIgnoreCase) =>
+                SanitizeOrderNumber(argumentValue),
+            _ when safeName.Equals("query", StringComparison.OrdinalIgnoreCase) =>
+                "<redacted>",
+            _ => Sanitize(argumentValue)
+        };
 
         Console.WriteLine($"[Args] {safeName}={safeValue}");
     }
@@ -44,6 +51,28 @@ public sealed class ConsoleToolCallLogger : IToolCallLogger
 
         string localPart = sanitized[..separatorIndex];
         return $"{localPart[0]}***@{domain}";
+    }
+
+    private static string SanitizeOrderNumber(string? value)
+    {
+        const string DemoPrefix = "AYG-DEMO-";
+
+        string sanitized = Sanitize(value);
+        if (!sanitized.StartsWith(DemoPrefix, StringComparison.OrdinalIgnoreCase)
+            || sanitized.Length == DemoPrefix.Length)
+        {
+            return "<redacted>";
+        }
+
+        foreach (char character in sanitized.AsSpan(DemoPrefix.Length))
+        {
+            if (character is < '0' or > '9')
+            {
+                return "<redacted>";
+            }
+        }
+
+        return sanitized;
     }
 
     private static string Sanitize(string? value)

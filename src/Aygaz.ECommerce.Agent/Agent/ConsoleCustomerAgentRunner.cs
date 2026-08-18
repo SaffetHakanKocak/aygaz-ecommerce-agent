@@ -79,7 +79,7 @@ public sealed class ConsoleCustomerAgentRunner(IGuardedAgentService guardedAgent
     {
         Console.WriteLine();
         Console.WriteLine("-----------------------------------------");
-        Console.WriteLine("Customer AI Agent");
+        Console.WriteLine("E-Commerce AI Agent");
         Console.WriteLine("-----------------------------------------");
         Console.WriteLine();
     }

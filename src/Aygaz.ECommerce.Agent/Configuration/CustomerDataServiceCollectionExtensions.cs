@@ -34,6 +34,7 @@ public static class CustomerDataServiceCollectionExtensions
             options.UseSqlite(resolvedConnectionString));
         services.AddScoped<DatabaseInitializer>();
         services.AddScoped<ICustomerService, CustomerService>();
+        services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<ConsoleCustomerTestRunner>();
 
         return services;

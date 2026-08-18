@@ -38,7 +38,7 @@ public sealed class OllamaChatClient : IOllamaChatClient
             _options.Model,
             messages,
             Stream: false,
-            Think: false,
+            Think: settings?.Think ?? false,
             Options: new OllamaRuntimeOptions(
                 _options.GpuLayers,
                 _options.ContextSize,

@@ -7,7 +7,8 @@ public sealed record OllamaChatSettings(
     IReadOnlyCollection<OllamaToolDefinition>? Tools = null,
     JsonElement? Format = null,
     double? Temperature = null,
-    int? MaxOutputTokens = null);
+    int? MaxOutputTokens = null,
+    bool? Think = null);
 
 public sealed record OllamaChatRequest(
     [property: JsonPropertyName("model")] string Model,

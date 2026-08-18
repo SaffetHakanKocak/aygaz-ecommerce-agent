@@ -15,4 +15,6 @@ public sealed class Customer
     public string? City { get; set; }
 
     public DateTime CreatedAt { get; set; }
+
+    public ICollection<CustomerOrder> Orders { get; set; } = [];
 }

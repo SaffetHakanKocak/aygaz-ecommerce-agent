@@ -8,6 +8,8 @@ public sealed class ECommerceDbContext(DbContextOptions<ECommerceDbContext> opti
 {
     public DbSet<Customer> Customers => Set<Customer>();
 
+    public DbSet<CustomerOrder> CustomerOrders => Set<CustomerOrder>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -42,6 +44,45 @@ public sealed class ECommerceDbContext(DbContextOptions<ECommerceDbContext> opti
 
             customer.Property(entity => entity.CreatedAt)
                 .IsRequired();
+        });
+
+        modelBuilder.Entity<CustomerOrder>(order =>
+        {
+            order.ToTable(
+                "CustomerOrders",
+                table => table.HasCheckConstraint(
+                    "CK_CustomerOrders_TotalAmount_NonNegative",
+                    "\"TotalAmount\" >= 0"));
+
+            order.HasKey(entity => entity.Id);
+
+            order.Property(entity => entity.OrderNumber)
+                .HasMaxLength(CustomerOrder.MaximumOrderNumberLength)
+                .UseCollation("NOCASE")
+                .IsRequired();
+
+            order.HasIndex(entity => entity.OrderNumber)
+                .IsUnique();
+
+            order.Property(entity => entity.OrderDate)
+                .IsRequired();
+
+            order.Property(entity => entity.Status)
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .IsRequired();
+
+            order.Property(entity => entity.TotalAmount)
+                .HasPrecision(18, 2)
+                .IsRequired();
+
+            order.HasIndex(entity => entity.CustomerId);
+
+            order.HasOne(entity => entity.Customer)
+                .WithMany(customer => customer.Orders)
+                .HasForeignKey(entity => entity.CustomerId)
+                .IsRequired()
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

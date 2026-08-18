@@ -10,7 +10,7 @@ using Microsoft.Extensions.Options;
 
 namespace Aygaz.ECommerce.Agent.Tools;
 
-public sealed class CustomerToolExecutor : IAgentToolExecutor
+public sealed class CustomerToolExecutor : IAgentToolModule
 {
     public const string GetCustomerByEmailToolName = "get_customer_by_email";
     public const string GetCustomerByIdToolName = "get_customer_by_id";
@@ -24,7 +24,7 @@ public sealed class CustomerToolExecutor : IAgentToolExecutor
         {
             CreateToolDefinition(
                 GetCustomerByEmailToolName,
-                "E-posta adresine göre tek bir müşteriyi getirir.",
+                "E-posta adresine göre tek bir müşteriyi ve müşteri ID'sini getirir.",
                 "email",
                 "string",
                 "Aranacak müşterinin e-posta adresi."),
@@ -36,7 +36,7 @@ public sealed class CustomerToolExecutor : IAgentToolExecutor
                 "Aranacak müşterinin pozitif kimlik numarası."),
             CreateToolDefinition(
                 SearchCustomersByNameToolName,
-                "Ad veya soyada göre müşterileri arar ve sınırlı sayıda sonuç döndürür.",
+                "Ad veya soyada göre müşterileri ve ID'lerini sınırlı sayıda getirir.",
                 "query",
                 "string",
                 "Aranacak müşterinin adı, soyadı veya tam adı.")

@@ -226,7 +226,7 @@ internal static class Program
         Console.WriteLine();
         Console.WriteLine("1 - Local LLM Test");
         Console.WriteLine("2 - Customer Database Test");
-        Console.WriteLine("3 - Customer AI Agent");
+        Console.WriteLine("3 - E-Commerce AI Agent");
         Console.WriteLine("0 - Exit");
         Console.WriteLine();
         Console.WriteLine("Seçiminiz:");
