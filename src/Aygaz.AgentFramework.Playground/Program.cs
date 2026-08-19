@@ -1,14 +1,13 @@
 ﻿#pragma warning disable SKEXP0070
 #pragma warning disable SKEXP0110
 
+using Aygaz.AgentFramework.Agents;
 using Aygaz.AgentFramework.Configuration;
 using Aygaz.AgentFramework.Execution;
 using Aygaz.AgentFramework.Kernel;
+using Aygaz.AgentFramework.Routing;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Agents;
 using AgentDefinition = Aygaz.AgentFramework.Agents.AgentDefinition;
-using IAgentFactory = Aygaz.AgentFramework.Agents.IAgentFactory;
-using SemanticKernelAgentFactory = Aygaz.AgentFramework.Agents.SemanticKernelAgentFactory;
 
 namespace Aygaz.AgentFramework.Playground;
 
@@ -17,7 +16,7 @@ internal static class Program
     private static async Task Main()
     {
         Console.WriteLine("Aygaz Agent Framework - Semantic Kernel Playground");
-        Console.WriteLine("Agent Isolation Demo");
+        Console.WriteLine("Agent Registry + Routing Demo");
         Console.WriteLine();
 
         var options = new SemanticKernelOptions
@@ -28,7 +27,6 @@ internal static class Program
 
         var kernelFactory = new SemanticKernelFactory(options);
         var agentFactory = new SemanticKernelAgentFactory();
-        IAgentRunner runner = new SemanticKernelAgentRunner();
 
         // SystemAgent: ayrı Kernel, yalnızca SystemPlugin
         Microsoft.SemanticKernel.Kernel systemKernel = kernelFactory.CreateKernel();
@@ -41,8 +39,6 @@ internal static class Program
             Instructions = "You are the system info agent. Use the available functions to answer system-related questions. Do not invent function results."
         }, systemKernel);
 
-        Console.WriteLine("Agent created: SystemAgent (Plugin: SystemPlugin)");
-
         // MathAgent: ayrı Kernel, yalnızca MathPlugin
         Microsoft.SemanticKernel.Kernel mathKernel = kernelFactory.CreateKernel();
         mathKernel.Plugins.AddFromObject(new MathPlugin());
@@ -54,35 +50,59 @@ internal static class Program
             Instructions = "You are the math agent. Use the available functions to perform calculations. Do not invent function results."
         }, mathKernel);
 
-        Console.WriteLine("Agent created: MathAgent (Plugin: MathPlugin)");
+        // Registry
+        IAgentRegistry registry = new AgentRegistry();
+        registry.Register(systemAgent);
+        registry.Register(mathAgent);
+        Console.WriteLine($"Registered agents: {string.Join(", ", registry.GetAgentNames())}");
+
+        // Router
+        IAgentRouter router = new AgentRouter();
+        router.MapRoute("system", "SystemAgent");
+        router.MapRoute("math", "MathAgent");
+        Console.WriteLine($"Routes: {string.Join(", ", router.GetRouteKeys())}");
         Console.WriteLine();
+
+        // Runner
+        IAgentRunner runner = new SemanticKernelAgentRunner();
 
         while (true)
         {
-            Console.WriteLine("Agent seçin:");
-            Console.WriteLine("  1 - SystemAgent");
-            Console.WriteLine("  2 - MathAgent");
+            Console.WriteLine("Route seçin:");
+            Console.WriteLine("  1 - system");
+            Console.WriteLine("  2 - math");
             Console.WriteLine("  0 - Exit");
             Console.Write("> ");
 
             string? choice = Console.ReadLine();
             if (choice == "0" || choice == null) break;
 
-            ChatCompletionAgent selectedAgent = choice switch
+            string routeKey = choice switch
             {
-                "1" => systemAgent,
-                "2" => mathAgent,
-                _ => systemAgent
+                "1" => "system",
+                "2" => "math",
+                _ => "system"
             };
 
             Console.Write("Mesaj: ");
             string? input = Console.ReadLine();
             if (string.IsNullOrWhiteSpace(input)) continue;
 
+            string? agentName = router.ResolveAgentName(routeKey);
+            if (agentName == null)
+            {
+                Console.WriteLine("  Route bulunamadı.");
+                continue;
+            }
+
+            var agent = registry.GetAgent(agentName);
+
+            Console.WriteLine($"  Route selected: {routeKey}");
+            Console.WriteLine($"  Agent selected: {agent.Name}");
+
             try
             {
-                Console.WriteLine($"  Agent invoked: {selectedAgent.Name}");
-                var response = await runner.InvokeAsync(selectedAgent, input);
+                var response = await runner.InvokeAsync(agent, input);
 
                 Console.WriteLine();
                 Console.WriteLine(response.Content);
