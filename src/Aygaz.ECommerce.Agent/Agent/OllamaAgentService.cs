@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Aygaz.ECommerce.Agent.Configuration;
 using Aygaz.ECommerce.Agent.Models;
 using Aygaz.ECommerce.Agent.Services;
@@ -54,19 +55,23 @@ public sealed class OllamaAgentService : IAgentService
     private readonly IAgentToolExecutor _toolExecutor;
     private readonly OllamaChatSettings _chatSettings;
     private readonly AgentOptions _options;
+    private readonly IOllamaCallTracker? _callTracker;
     private readonly Queue<IReadOnlyList<OllamaChatMessage>> _completedTurns = new();
 
     public OllamaAgentService(
         IOllamaChatClient chatClient,
         IAgentToolExecutor toolExecutor,
-        IOptions<AgentOptions> options)
+        IOptions<AgentOptions> options,
+        IOllamaCallTracker? callTracker = null)
     {
         _chatClient = chatClient;
         _toolExecutor = toolExecutor;
         _chatSettings = new OllamaChatSettings(
             Tools: toolExecutor.ToolDefinitions,
-            Think: false);
+            Think: false,
+            CallType: OllamaCallType.Agent);
         _options = options.Value;
+        _callTracker = callTracker;
     }
 
     public async Task<string> AskAsync(
@@ -78,6 +83,7 @@ public sealed class OllamaAgentService : IAgentService
         string normalizedMessage = userMessage.Trim();
         var messages = BuildHistory(normalizedMessage);
         int toolIterations = 0;
+        int totalToolsExecuted = 0;
 
         while (true)
         {
@@ -133,13 +139,13 @@ public sealed class OllamaAgentService : IAgentService
 
             toolIterations++;
 
-            foreach (OllamaToolCall? toolCall in toolCalls)
+            if (toolCalls.Count == 1)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                OllamaToolCall toolCall = toolCalls[0];
 
                 if (toolCall?.Function is null
                     || string.IsNullOrWhiteSpace(toolCall.Function.Name)
-                    || toolCall.Function.Arguments.ValueKind == System.Text.Json.JsonValueKind.Undefined)
+                    || toolCall.Function.Arguments.ValueKind == JsonValueKind.Undefined)
                 {
                     throw new AgentException(
                         "Agent geçerli bir tool çağrısı üretemedi.",
@@ -147,33 +153,86 @@ public sealed class OllamaAgentService : IAgentService
                 }
 
                 string toolName = toolCall.Function.Name;
-                ToolExecutionResult executionResult;
-
-                try
-                {
-                    executionResult = await _toolExecutor.ExecuteAsync(
-                        toolName,
-                        toolCall.Function.Arguments,
-                        cancellationToken);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (Exception exception)
-                {
-                    throw new AgentException(
-                        "E-ticaret sorgusu tamamlanamadı.",
-                        $"Allow-list tool yürütme hatası: {exception.GetType().Name}.",
-                        exception);
-                }
+                ToolExecutionResult executionResult = await ExecuteToolAsync(
+                    toolName,
+                    toolCall.Function.Arguments,
+                    cancellationToken);
 
                 messages.Add(new OllamaChatMessage(
                     "tool",
                     executionResult.Content,
                     ToolName: toolName,
                     ToolCallId: toolCall.Id));
+
+                totalToolsExecuted++;
+
+                if (totalToolsExecuted == 1
+                    && SimpleToolResultFormatter.CanUseFastPath(toolName)
+                    && SimpleToolResultFormatter.TryFormat(
+                        toolName,
+                        executionResult,
+                        out string formattedAnswer))
+                {
+                    _callTracker?.MarkFastPathUsed();
+                    RememberCompletedTurn(normalizedMessage, formattedAnswer);
+                    return formattedAnswer;
+                }
+
+                continue;
             }
+
+            foreach (OllamaToolCall? toolCall in toolCalls)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (toolCall?.Function is null
+                    || string.IsNullOrWhiteSpace(toolCall.Function.Name)
+                    || toolCall.Function.Arguments.ValueKind == JsonValueKind.Undefined)
+                {
+                    throw new AgentException(
+                        "Agent geçerli bir tool çağrısı üretemedi.",
+                        "Tool call içindeki function, name veya arguments alanı eksik.");
+                }
+
+                string toolName = toolCall.Function.Name;
+                ToolExecutionResult executionResult = await ExecuteToolAsync(
+                    toolName,
+                    toolCall.Function.Arguments,
+                    cancellationToken);
+
+                messages.Add(new OllamaChatMessage(
+                    "tool",
+                    executionResult.Content,
+                    ToolName: toolName,
+                    ToolCallId: toolCall.Id));
+
+                totalToolsExecuted++;
+            }
+        }
+    }
+
+    private async Task<ToolExecutionResult> ExecuteToolAsync(
+        string toolName,
+        JsonElement arguments,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _toolExecutor.ExecuteAsync(
+                toolName,
+                arguments,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            throw new AgentException(
+                "E-ticaret sorgusu tamamlanamadı.",
+                $"Allow-list tool yürütme hatası: {exception.GetType().Name}.",
+                exception);
         }
     }
 

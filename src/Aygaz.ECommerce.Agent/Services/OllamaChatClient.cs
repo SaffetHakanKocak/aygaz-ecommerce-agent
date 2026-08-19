@@ -16,15 +16,18 @@ public sealed class OllamaChatClient : IOllamaChatClient
     private readonly HttpClient _httpClient;
     private readonly OllamaOptions _options;
     private readonly IOllamaCallTracker _callTracker;
+    private readonly IOllamaPerformanceLogger _performanceLogger;
 
     public OllamaChatClient(
         HttpClient httpClient,
         IOptions<OllamaOptions> options,
-        IOllamaCallTracker callTracker)
+        IOllamaCallTracker callTracker,
+        IOllamaPerformanceLogger performanceLogger)
     {
         _httpClient = httpClient;
         _options = options.Value;
         _callTracker = callTracker;
+        _performanceLogger = performanceLogger;
     }
 
     public async Task<OllamaChatMessage> ChatAsync(
@@ -40,6 +43,7 @@ public sealed class OllamaChatClient : IOllamaChatClient
         }
 
         string model = settings?.Model ?? _options.Model;
+        OllamaCallType callType = settings?.CallType ?? OllamaCallType.Agent;
 
         var requestBody = new OllamaChatRequest(
             model,
@@ -53,8 +57,6 @@ public sealed class OllamaChatClient : IOllamaChatClient
             Tools: settings?.Tools,
             Format: settings?.Format,
             KeepAlive: _options.KeepAlive);
-
-        _callTracker.RecordCall();
 
         try
         {
@@ -85,6 +87,19 @@ public sealed class OllamaChatClient : IOllamaChatClient
                     "Local LLM geçerli bir yanıt döndürmedi.",
                     "Ollama yanıtında message alanı boş veya eksik.");
             }
+
+            var metrics = new OllamaCallMetrics(
+                chatResponse.Model ?? model,
+                callType,
+                chatResponse.TotalDuration,
+                chatResponse.LoadDuration,
+                chatResponse.PromptEvalDuration,
+                chatResponse.EvalDuration,
+                chatResponse.PromptEvalCount,
+                chatResponse.EvalCount);
+
+            _callTracker.RecordCall(metrics);
+            _performanceLogger.LogCall(metrics);
 
             return chatResponse.Message;
         }
@@ -155,7 +170,6 @@ public sealed class OllamaChatClient : IOllamaChatClient
         }
         catch (JsonException)
         {
-            // Ham yanıt aşağıda kısa ve tek satırlı bir teknik detay olarak korunur.
         }
 
         return NormalizeTechnicalDetail(responseBody);

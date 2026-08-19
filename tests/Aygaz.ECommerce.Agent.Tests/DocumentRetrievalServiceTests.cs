@@ -82,7 +82,8 @@ public sealed class DocumentRetrievalServiceTests
             new TestHostEnvironment
             {
                 ContentRootPath = AppContext.BaseDirectory
-            });
+            },
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<DocumentRetrievalService>.Instance);
     }
 
     private static string GetRelativeDocumentsPath()

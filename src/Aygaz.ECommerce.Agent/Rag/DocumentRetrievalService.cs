@@ -1,6 +1,7 @@
 using Aygaz.ECommerce.Agent.Configuration;
 using Aygaz.ECommerce.Agent.Services;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Aygaz.ECommerce.Agent.Rag;
@@ -12,6 +13,7 @@ public sealed class DocumentRetrievalService : IDocumentRetrievalService
     private readonly IEmbeddingService _embeddingService;
     private readonly RagOptions _options;
     private readonly string _documentsDirectory;
+    private readonly ILogger<DocumentRetrievalService> _logger;
     private readonly SemaphoreSlim _initializationLock = new(1, 1);
 
     private IReadOnlyList<IndexedChunk> _indexedChunks = [];
@@ -21,14 +23,17 @@ public sealed class DocumentRetrievalService : IDocumentRetrievalService
     public DocumentRetrievalService(
         IEmbeddingService embeddingService,
         IOptions<RagOptions> options,
-        IHostEnvironment hostEnvironment)
+        IHostEnvironment hostEnvironment,
+        ILogger<DocumentRetrievalService> logger)
     {
         ArgumentNullException.ThrowIfNull(embeddingService);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(hostEnvironment);
+        ArgumentNullException.ThrowIfNull(logger);
 
         _embeddingService = embeddingService;
         _options = options.Value;
+        _logger = logger;
         _documentsDirectory = Path.GetFullPath(
             Path.Combine(hostEnvironment.ContentRootPath, _options.DocumentsPath));
     }
@@ -102,6 +107,11 @@ public sealed class DocumentRetrievalService : IDocumentRetrievalService
                 "*.txt",
                 SearchOption.TopDirectoryOnly).Length;
 
+            _logger.LogInformation(
+                "RAG cold-start: {DocumentCount} doküman, {ChunkCount} chunk için embedding üretiliyor.",
+                _documentCount,
+                chunks.Count);
+
             var indexedChunks = new List<IndexedChunk>(chunks.Count);
 
             foreach (DocumentChunk chunk in chunks)
@@ -120,6 +130,11 @@ public sealed class DocumentRetrievalService : IDocumentRetrievalService
 
             _indexedChunks = indexedChunks;
             _isInitialized = true;
+
+            _logger.LogInformation(
+                "RAG index hazır: {DocumentCount} doküman, {ChunkCount} chunk.",
+                _documentCount,
+                _indexedChunks.Count);
         }
         finally
         {

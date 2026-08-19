@@ -11,7 +11,7 @@ namespace Aygaz.ECommerce.Agent.Tests;
 public sealed class OllamaAgentServiceTests
 {
     [Fact]
-    public async Task AskAsync_ToolCall_AppendsAssistantAndToolMessagesBeforeFinalRequest()
+    public async Task AskAsync_SingleCustomerTool_UsesStandardModelLoop()
     {
         JsonElement arguments = ParseJson(
             """{"email":"ahmet.yilmaz@example.com"}""");
@@ -19,6 +19,79 @@ public sealed class OllamaAgentServiceTests
             "call-1",
             new OllamaToolCallFunction(
                 Name: CustomerToolExecutor.GetCustomerByEmailToolName,
+                Arguments: arguments));
+        var firstAssistantMessage = new OllamaChatMessage(
+            "assistant",
+            null,
+            [toolCall]);
+        var finalAssistantMessage = new OllamaChatMessage(
+            "assistant",
+            "Ahmet Yılmaz, İstanbul'da kayıtlı müşteridir.");
+        var chatClient = new RecordingOllamaChatClient(
+            firstAssistantMessage,
+            finalAssistantMessage);
+        ToolExecutionResult toolResult = ToolExecutionResult.FromSuccess(
+            new
+            {
+                id = 1,
+                firstName = "Ahmet",
+                lastName = "Yılmaz",
+                email = "ahmet.yilmaz@example.com",
+                city = "İstanbul"
+            });
+        var toolExecutor = new RecordingAgentToolExecutor(toolResult);
+        var agent = CreateAgent(chatClient, toolExecutor);
+
+        string answer = await agent.AskAsync(
+            "  ahmet.yilmaz@example.com müşterisi kim?  ");
+
+        Assert.Equal("Ahmet Yılmaz, İstanbul'da kayıtlı müşteridir.", answer);
+        Assert.Equal(2, chatClient.Calls.Count);
+        Assert.Single(toolExecutor.Calls);
+    }
+
+    [Fact]
+    public async Task AskAsync_SingleLatestOrderTool_UsesFastPath()
+    {
+        var toolCall = new OllamaToolCall(
+            "call-order",
+            new OllamaToolCallFunction(
+                Name: OrderToolExecutor.GetLatestCustomerOrderToolName,
+                Arguments: ParseJson("""{"customerId":1}""")));
+        var firstAssistantMessage = new OllamaChatMessage(
+            "assistant",
+            null,
+            [toolCall]);
+        var chatClient = new RecordingOllamaChatClient(firstAssistantMessage);
+        ToolExecutionResult orderResult = ToolExecutionResult.FromSuccess(
+            new
+            {
+                id = 4,
+                orderNumber = "AYG-DEMO-1004",
+                orderDate = new DateTime(2026, 2, 22, 10, 0, 0, DateTimeKind.Utc),
+                status = "Hazırlanıyor",
+                totalAmount = 910.75m
+            });
+        var toolExecutor = new RecordingAgentToolExecutor(orderResult);
+        var tracker = new OllamaCallTracker();
+        var agent = CreateAgent(chatClient, toolExecutor, callTracker: tracker);
+
+        string answer = await agent.AskAsync("Son sipariş durumu nedir?");
+
+        Assert.Equal("Sipariş AYG-DEMO-1004 durumu: Hazırlanıyor.", answer);
+        Assert.Single(chatClient.Calls);
+        Assert.True(tracker.FastPathUsed);
+    }
+
+    [Fact]
+    public async Task AskAsync_NonFastPathTool_UsesSecondModelResponse()
+    {
+        JsonElement arguments = ParseJson(
+            """{"email":"ahmet.yilmaz@example.com"}""");
+        var toolCall = new OllamaToolCall(
+            "call-1",
+            new OllamaToolCallFunction(
+                Name: "unsupported_tool",
                 Arguments: arguments));
         var firstAssistantMessage = new OllamaChatMessage(
             "assistant",
@@ -65,13 +138,13 @@ public sealed class OllamaAgentServiceTests
         Assert.Equal(firstAssistantMessage, secondRequest.Messages[2]);
 
         OllamaChatMessage toolMessage = secondRequest.Messages[3];
-        Assert.Equal(CustomerToolExecutor.GetCustomerByEmailToolName, toolMessage.ToolName);
+        Assert.Equal("unsupported_tool", toolMessage.ToolName);
         Assert.Equal("call-1", toolMessage.ToolCallId);
         Assert.Equal(toolResult.Content, toolMessage.Content);
         Assert.Null(toolMessage.ToolCalls);
 
         ToolInvocation execution = Assert.Single(toolExecutor.Calls);
-        Assert.Equal(CustomerToolExecutor.GetCustomerByEmailToolName, execution.ToolName);
+        Assert.Equal("unsupported_tool", execution.ToolName);
         Assert.Equal(
             "ahmet.yilmaz@example.com",
             execution.Arguments.GetProperty("email").GetString());
@@ -690,7 +763,8 @@ public sealed class OllamaAgentServiceTests
         IOllamaChatClient chatClient,
         IAgentToolExecutor toolExecutor,
         int maxToolIterations = 5,
-        int maxToolCallsPerIteration = 3)
+        int maxToolCallsPerIteration = 3,
+        IOllamaCallTracker? callTracker = null)
     {
         return new OllamaAgentService(
             chatClient,
@@ -704,7 +778,8 @@ public sealed class OllamaAgentServiceTests
                 MaxOrderSearchResults = 5,
                 MaxProductSearchResults = 5,
                 MaxInventoryLocationResults = 5
-            }));
+            }),
+            callTracker);
     }
 
     private static OllamaChatMessage CreateIdToolCallAssistantMessage()

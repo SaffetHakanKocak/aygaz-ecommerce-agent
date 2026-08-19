@@ -9,4 +9,10 @@ public sealed record OllamaEmbedRequest(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     string? KeepAlive = null);
 
-public sealed record OllamaEmbedResponse(float[][] Embeddings);
+public sealed record OllamaEmbedResponse(
+    [property: JsonPropertyName("model")] string? Model,
+    float[][] Embeddings,
+    [property: JsonPropertyName("total_duration")] long? TotalDuration,
+    [property: JsonPropertyName("load_duration")] long? LoadDuration,
+    [property: JsonPropertyName("prompt_eval_count")] int? PromptEvalCount,
+    [property: JsonPropertyName("prompt_eval_duration")] long? PromptEvalDuration);

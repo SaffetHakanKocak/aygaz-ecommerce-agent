@@ -16,15 +16,18 @@ public sealed class OllamaEmbeddingClient : IOllamaEmbeddingClient
     private readonly HttpClient _httpClient;
     private readonly OllamaOptions _options;
     private readonly IOllamaCallTracker _callTracker;
+    private readonly IOllamaPerformanceLogger _performanceLogger;
 
     public OllamaEmbeddingClient(
         HttpClient httpClient,
         IOptions<OllamaOptions> options,
-        IOllamaCallTracker callTracker)
+        IOllamaCallTracker callTracker,
+        IOllamaPerformanceLogger performanceLogger)
     {
         _httpClient = httpClient;
         _options = options.Value;
         _callTracker = callTracker;
+        _performanceLogger = performanceLogger;
     }
 
     public async Task<IReadOnlyList<float>> EmbedAsync(
@@ -36,9 +39,7 @@ public sealed class OllamaEmbeddingClient : IOllamaEmbeddingClient
         var requestBody = new OllamaEmbedRequest(
             _options.EmbeddingModel,
             input,
-            KeepAlive: _options.KeepAlive);
-
-        _callTracker.RecordCall();
+            KeepAlive: _options.EmbeddingKeepAlive);
 
         try
         {
@@ -70,6 +71,19 @@ public sealed class OllamaEmbeddingClient : IOllamaEmbeddingClient
                     "Local LLM geçerli bir embedding döndürmedi.",
                     "Ollama yanıtında embeddings alanı boş veya eksik.");
             }
+
+            var metrics = new OllamaCallMetrics(
+                embedResponse.Model ?? _options.EmbeddingModel,
+                OllamaCallType.Embedding,
+                embedResponse.TotalDuration,
+                embedResponse.LoadDuration,
+                embedResponse.PromptEvalDuration,
+                EvalDurationNs: null,
+                embedResponse.PromptEvalCount,
+                EvalCount: null);
+
+            _callTracker.RecordCall(metrics);
+            _performanceLogger.LogCall(metrics);
 
             return Array.AsReadOnly(embeddings[0]);
         }

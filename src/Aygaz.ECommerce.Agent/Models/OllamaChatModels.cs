@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Aygaz.ECommerce.Agent.Services;
+
 namespace Aygaz.ECommerce.Agent.Models;
 
 public sealed record OllamaChatSettings(
@@ -9,7 +11,8 @@ public sealed record OllamaChatSettings(
     double? Temperature = null,
     int? MaxOutputTokens = null,
     bool? Think = null,
-    string? Model = null);
+    string? Model = null,
+    OllamaCallType? CallType = null);
 
 public sealed record OllamaChatRequest(
     [property: JsonPropertyName("model")] string Model,
@@ -89,7 +92,14 @@ public sealed record OllamaToolProperty(
     [property: JsonPropertyName("description")] string Description);
 
 public sealed record OllamaChatResponse(
-    [property: JsonPropertyName("message")] OllamaChatMessage? Message);
+    [property: JsonPropertyName("model")] string? Model,
+    [property: JsonPropertyName("message")] OllamaChatMessage? Message,
+    [property: JsonPropertyName("total_duration")] long? TotalDuration,
+    [property: JsonPropertyName("load_duration")] long? LoadDuration,
+    [property: JsonPropertyName("prompt_eval_count")] int? PromptEvalCount,
+    [property: JsonPropertyName("prompt_eval_duration")] long? PromptEvalDuration,
+    [property: JsonPropertyName("eval_count")] int? EvalCount,
+    [property: JsonPropertyName("eval_duration")] long? EvalDuration);
 
 public sealed record OllamaErrorResponse(
     [property: JsonPropertyName("error")] string? Error);

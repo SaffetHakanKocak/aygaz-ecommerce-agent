@@ -261,11 +261,13 @@ public sealed class DomainGuardrailServiceTests
             {
                 BaseUrl = "http://localhost:11434/",
                 Model = "agent-model",
-                KeepAlive = "5m",
+                KeepAlive = "15m",
+                EmbeddingKeepAlive = "1m",
                 ContextSize = 2048,
                 MaxOutputTokens = 256
             }),
-            new OllamaCallTracker());
+            new OllamaCallTracker(),
+            NullOllamaPerformanceLogger.Instance);
         var service = CreateService(ollamaClient, classifierModel: "guardrail-model");
 
         DomainScopeResult result = await service.EvaluateAsync("Merhaba");
@@ -279,7 +281,7 @@ public sealed class DomainGuardrailServiceTests
         JsonElement request = requestDocument.RootElement;
 
         Assert.Equal("guardrail-model", request.GetProperty("model").GetString());
-        Assert.Equal("5m", request.GetProperty("keep_alive").GetString());
+        Assert.Equal("15m", request.GetProperty("keep_alive").GetString());
         Assert.False(request.TryGetProperty("tools", out _));
         Assert.False(request.GetProperty("stream").GetBoolean());
         Assert.False(request.GetProperty("think").GetBoolean());

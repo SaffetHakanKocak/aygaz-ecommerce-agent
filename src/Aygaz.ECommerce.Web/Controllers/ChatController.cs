@@ -16,28 +16,19 @@ public sealed class ChatController : ControllerBase
 {
     private readonly IChatSessionStore _sessionStore;
     private readonly ChatApiOptions _options;
-    private readonly OllamaOptions _ollamaOptions;
-    private readonly DomainGuardrailOptions _guardrailOptions;
     private readonly IOllamaCallTracker _callTracker;
-    private readonly IWebHostEnvironment _environment;
-    private readonly ILogger<ChatController> _logger;
+    private readonly IOllamaPerformanceLogger _performanceLogger;
 
     public ChatController(
         IChatSessionStore sessionStore,
         IOptions<ChatApiOptions> options,
-        IOptions<OllamaOptions> ollamaOptions,
-        IOptions<DomainGuardrailOptions> guardrailOptions,
         IOllamaCallTracker callTracker,
-        IWebHostEnvironment environment,
-        ILogger<ChatController> logger)
+        IOllamaPerformanceLogger performanceLogger)
     {
         _sessionStore = sessionStore;
         _options = options.Value;
-        _ollamaOptions = ollamaOptions.Value;
-        _guardrailOptions = guardrailOptions.Value;
         _callTracker = callTracker;
-        _environment = environment;
-        _logger = logger;
+        _performanceLogger = performanceLogger;
     }
 
     [HttpPost("chat")]
@@ -123,18 +114,10 @@ public sealed class ChatController : ControllerBase
 
     private void LogPerformance(long elapsedMilliseconds)
     {
-        if (!_environment.IsDevelopment())
-        {
-            return;
-        }
-
-        _logger.LogInformation(
-            "Ollama performans: agentModel={AgentModel}, guardrailModel={GuardrailModel}, " +
-            "ollamaCallCount={OllamaCallCount}, elapsedMs={ElapsedMs}",
-            _ollamaOptions.Model,
-            _guardrailOptions.Model,
+        _performanceLogger.LogRequestSummary(
             _callTracker.CallCount,
-            elapsedMilliseconds);
+            elapsedMilliseconds,
+            _callTracker.FastPathUsed);
     }
 
     private static ApiErrorResponse CreateError(string message)

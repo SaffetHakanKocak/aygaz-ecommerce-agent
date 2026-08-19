@@ -29,6 +29,9 @@ public static class ServiceCollectionExtensions
                 options => !string.IsNullOrWhiteSpace(options.KeepAlive),
                 "Ollama:KeepAlive boş olamaz.")
             .Validate(
+                options => !string.IsNullOrWhiteSpace(options.EmbeddingKeepAlive),
+                "Ollama:EmbeddingKeepAlive boş olamaz.")
+            .Validate(
                 options => options.ContextSize > 0,
                 "Ollama:ContextSize sıfırdan büyük olmalıdır.")
             .Validate(
@@ -36,6 +39,7 @@ public static class ServiceCollectionExtensions
                 "Ollama:MaxOutputTokens sıfırdan büyük olmalıdır.");
 
         services.AddSingleton<IOllamaCallTracker, OllamaCallTracker>();
+        services.AddSingleton<IOllamaPerformanceLogger, OllamaPerformanceLogger>();
 
         services.AddHttpClient<IOllamaChatClient, OllamaChatClient>((serviceProvider, httpClient) =>
         {

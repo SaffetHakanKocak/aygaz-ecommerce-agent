@@ -10,7 +10,9 @@ public sealed class OllamaOptions
 
     public string EmbeddingModel { get; init; } = "nomic-embed-text";
 
-    public string KeepAlive { get; init; } = "5m";
+    public string KeepAlive { get; init; } = "15m";
+
+    public string EmbeddingKeepAlive { get; init; } = "1m";
 
     public int ContextSize { get; init; } = 2048;
 

@@ -2,17 +2,28 @@ namespace Aygaz.ECommerce.Agent.Services;
 
 public sealed class OllamaCallTracker : IOllamaCallTracker
 {
-    private static readonly AsyncLocal<int> CurrentCallCount = new();
+    private readonly List<OllamaCallMetrics> _calls = [];
+    private bool _fastPathUsed;
 
-    public int CallCount => CurrentCallCount.Value;
+    public int CallCount => _calls.Count;
+
+    public bool FastPathUsed => _fastPathUsed;
+
+    public IReadOnlyList<OllamaCallMetrics> Calls => _calls;
 
     public void Reset()
     {
-        CurrentCallCount.Value = 0;
+        _calls.Clear();
+        _fastPathUsed = false;
     }
 
-    public void RecordCall()
+    public void RecordCall(OllamaCallMetrics metrics)
     {
-        CurrentCallCount.Value++;
+        _calls.Add(metrics);
+    }
+
+    public void MarkFastPathUsed()
+    {
+        _fastPathUsed = true;
     }
 }
