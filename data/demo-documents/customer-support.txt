@@ -1,0 +1,23 @@
+AYGAZ SENTETİK DEMO — MÜŞTERİ DESTEK PROSEDÜRÜ
+
+Bu doküman yalnızca geliştirme ve test amaçlı sentetik bir demo metnidir.
+Gerçek Aygaz müşteri destek prosedürü değildir.
+
+Demo destek kanalları:
+- Demo web sitesi canlı sohbet (09:00-18:00)
+- Demo e-posta: demo-destek@example.com
+- Demo telefon hattı: 0800-DEMO-AYG (sentetik numara)
+
+Demo destek yanıt süreleri:
+- Canlı sohbet: anında
+- E-posta: 1 iş günü içinde
+- Telefon: bekleme süresi ortalama 2 dakika (demo)
+
+Demo destek kapsamı:
+- Sipariş durumu sorgulama
+- İade ve teslimat bilgisi
+- Demo ürün bilgisi ve kampanya soruları
+
+Demo destek dışı konular yönlendirme: Teknik servis ve kurumsal satış talepleri ilgili demo birime aktarılır.
+
+Bu metin demo amaçlıdır; gerçek operasyonel prosedür yerine geçmez.

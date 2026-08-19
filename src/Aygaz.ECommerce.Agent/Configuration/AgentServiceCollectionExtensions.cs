@@ -59,6 +59,7 @@ public static class AgentServiceCollectionExtensions
         services.AddScoped<IAgentToolModule, ProductToolExecutor>();
         services.AddScoped<IAgentToolModule, InventoryToolExecutor>();
         services.AddScoped<IAgentToolModule, SalesAnalyticsToolExecutor>();
+        services.AddScoped<IAgentToolModule, DocumentToolExecutor>();
         services.AddScoped<IAgentToolExecutor, CompositeAgentToolExecutor>();
         services.AddScoped<IAgentService, OllamaAgentService>();
         services.AddScoped<IGuardedAgentService, DomainGuardedAgentService>();

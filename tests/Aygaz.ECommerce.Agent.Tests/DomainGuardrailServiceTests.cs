@@ -206,6 +206,13 @@ public sealed class DomainGuardrailServiceTests
         Assert.Contains("SalesSummary", systemPrompt);
         Assert.Contains("TopSellingProducts", systemPrompt);
         Assert.Contains("CustomerPurchaseSummary", systemPrompt);
+        Assert.Contains("DocumentSearch", systemPrompt);
+        Assert.Contains("ReturnPolicyLookup", systemPrompt);
+        Assert.Contains("DeliveryPolicyLookup", systemPrompt);
+        Assert.Contains("CampaignPolicyLookup", systemPrompt);
+        Assert.Contains("CustomerSupportProcedures", systemPrompt);
+        Assert.Contains("iade politikası", systemPrompt);
+        Assert.Contains("Arçelik", systemPrompt);
         Assert.DoesNotContain("Arçelik nedir?", systemPrompt);
 
         string userContent = Assert.IsType<string>(invocation.Messages[1].Content);
@@ -449,6 +456,26 @@ public sealed class DomainGuardrailServiceTests
         yield return ["```json\n{\"decision\":\"Allowed\"}\n```"];
     }
 
+    [Fact]
+    public async Task EvaluateAsync_ArcelikReturnPolicyQuery_ParsesScriptedOutOfScopeDecision()
+    {
+        const string input = "Arçelik'in iade politikası nedir?";
+        var chatClient = new RecordingOllamaChatClient(
+            new OllamaChatMessage(
+                "assistant",
+                JsonSerializer.Serialize(new { decision = "OutOfScope" })));
+        var service = CreateService(chatClient);
+
+        DomainScopeResult result = await service.EvaluateAsync(input);
+
+        Assert.Equal(DomainScopeDecision.OutOfScope, result.Decision);
+        Assert.Equal(DomainScopeReasonCode.ClassifiedOutOfScope, result.ReasonCode);
+        ChatInvocation invocation = Assert.Single(chatClient.Calls);
+        using JsonDocument userDocument = JsonDocument.Parse(
+            Assert.IsType<string>(invocation.Messages[1].Content));
+        Assert.Equal(input, userDocument.RootElement.GetProperty("request").GetString());
+    }
+
     private static DomainGuardrailService CreateService(
         IOllamaChatClient chatClient,
         int maxInputCharacters = 1000)
@@ -472,7 +499,12 @@ public sealed class DomainGuardrailServiceTests
                     "StockAvailability",
                     "SalesSummary",
                     "TopSellingProducts",
-                    "CustomerPurchaseSummary"
+                    "CustomerPurchaseSummary",
+                    "DocumentSearch",
+                    "ReturnPolicyLookup",
+                    "DeliveryPolicyLookup",
+                    "CampaignPolicyLookup",
+                    "CustomerSupportProcedures"
                 ],
                 MaxInputCharacters = maxInputCharacters,
                 ClassifierMaxOutputTokens = 32

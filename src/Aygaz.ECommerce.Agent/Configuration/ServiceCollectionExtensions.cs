@@ -23,6 +23,9 @@ public static class ServiceCollectionExtensions
                 options => !string.IsNullOrWhiteSpace(options.Model),
                 "Ollama:Model boş olamaz.")
             .Validate(
+                options => !string.IsNullOrWhiteSpace(options.EmbeddingModel),
+                "Ollama:EmbeddingModel boş olamaz.")
+            .Validate(
                 options => options.GpuLayers >= 0,
                 "Ollama:GpuLayers negatif olamaz.")
             .Validate(

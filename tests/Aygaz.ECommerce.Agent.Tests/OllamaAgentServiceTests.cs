@@ -436,6 +436,117 @@ public sealed class OllamaAgentServiceTests
     }
 
     [Fact]
+    public async Task AskAsync_CustomerThenOrderThenDocuments_UsesFourModelResponsesAndExactToolHistory()
+    {
+        var customerToolCall = new OllamaToolCall(
+            "call-customer",
+            new OllamaToolCallFunction(
+                Name: CustomerToolExecutor.SearchCustomersByNameToolName,
+                Arguments: ParseJson("""{"query":"Ahmet Yilmaz"}""")));
+        var orderToolCall = new OllamaToolCall(
+            "call-order",
+            new OllamaToolCallFunction(
+                Name: OrderToolExecutor.GetLatestCustomerOrderToolName,
+                Arguments: ParseJson("""{"customerId":1}""")));
+        var documentToolCall = new OllamaToolCall(
+            "call-document",
+            new OllamaToolCallFunction(
+                Name: DocumentToolExecutor.SearchDocumentsToolName,
+                Arguments: ParseJson("""{"query":"iade politikası"}""")));
+        var customerAssistantMessage = new OllamaChatMessage(
+            "assistant",
+            null,
+            [customerToolCall]);
+        var orderAssistantMessage = new OllamaChatMessage(
+            "assistant",
+            null,
+            [orderToolCall]);
+        var documentAssistantMessage = new OllamaChatMessage(
+            "assistant",
+            null,
+            [documentToolCall]);
+        var finalAssistantMessage = new OllamaChatMessage(
+            "assistant",
+            "Son siparis AYG-DEMO-1004. Demo iade suresi 14 gundur.");
+        var chatClient = new RecordingOllamaChatClient(
+            customerAssistantMessage,
+            orderAssistantMessage,
+            documentAssistantMessage,
+            finalAssistantMessage);
+        ToolExecutionResult customerResult = ToolExecutionResult.FromSuccess(
+            new[]
+            {
+                new
+                {
+                    id = 1,
+                    firstName = "Ahmet",
+                    lastName = "Yilmaz",
+                    email = "ahmet.yilmaz@example.com",
+                    city = "Istanbul"
+                }
+            });
+        ToolExecutionResult orderResult = ToolExecutionResult.FromSuccess(
+            new
+            {
+                id = 4,
+                orderNumber = "AYG-DEMO-1004",
+                orderDate = new DateTime(2026, 2, 22, 10, 0, 0, DateTimeKind.Utc),
+                status = "Hazirlaniyor",
+                totalAmount = 910.75m
+            });
+        ToolExecutionResult documentResult = ToolExecutionResult.FromSuccess(
+            new[]
+            {
+                new
+                {
+                    documentName = "return-policy.txt",
+                    text = "Demo iade suresi: Teslimattan sonra 14 gun."
+                }
+            });
+        var toolExecutor = new RecordingAgentToolExecutor(
+            customerResult,
+            orderResult,
+            documentResult);
+        var agent = CreateAgent(chatClient, toolExecutor);
+
+        string answer = await agent.AskAsync(
+            "Ahmet Yilmaz'in son siparisini kontrol et ve iade politikasini soyle.");
+
+        Assert.Equal("Son siparis AYG-DEMO-1004. Demo iade suresi 14 gundur.", answer);
+        Assert.Equal(4, chatClient.Calls.Count);
+        Assert.Equal(
+            new[]
+            {
+                CustomerToolExecutor.SearchCustomersByNameToolName,
+                OrderToolExecutor.GetLatestCustomerOrderToolName,
+                DocumentToolExecutor.SearchDocumentsToolName
+            },
+            toolExecutor.Calls.Select(call => call.ToolName));
+
+        ChatInvocation fourthRequest = chatClient.Calls[3];
+        Assert.Equal(
+            new[]
+            {
+                "system",
+                "user",
+                "assistant",
+                "tool",
+                "assistant",
+                "tool",
+                "assistant",
+                "tool"
+            },
+            fourthRequest.Messages.Select(message => message.Role));
+        Assert.Equal(documentAssistantMessage, fourthRequest.Messages[6]);
+        Assert.Equal("tool", fourthRequest.Messages[7].Role);
+        Assert.Equal(
+            DocumentToolExecutor.SearchDocumentsToolName,
+            fourthRequest.Messages[7].ToolName);
+        Assert.Equal("call-document", fourthRequest.Messages[7].ToolCallId);
+        Assert.Equal(documentResult.Content, fourthRequest.Messages[7].Content);
+    }
+
+    [Fact]
     public async Task AskAsync_NoToolCall_ReturnsFinalContentWithoutCallingExecutor()
     {
         var chatClient = new RecordingOllamaChatClient(
@@ -726,6 +837,19 @@ public sealed class OllamaAgentServiceTests
                             ["toDate"] = new("string", "Test to date")
                         },
                         ["customerId", "fromDate", "toDate"],
+                        AdditionalProperties: false))),
+            new OllamaToolDefinition(
+                "function",
+                new OllamaToolFunctionDefinition(
+                    DocumentToolExecutor.SearchDocumentsToolName,
+                    "Test document search tool",
+                    new OllamaToolParameters(
+                        "object",
+                        new Dictionary<string, OllamaToolProperty>
+                        {
+                            ["query"] = new("string", "Test document query")
+                        },
+                        ["query"],
                         AdditionalProperties: false)))
         ];
 

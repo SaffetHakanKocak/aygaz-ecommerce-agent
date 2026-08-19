@@ -1,0 +1,17 @@
+AYGAZ SENTETİK DEMO — KAMPANYA KOŞULLARI
+
+Bu doküman yalnızca geliştirme ve test amaçlı sentetik bir demo metnidir.
+Gerçek Aygaz kampanya koşulları değildir.
+
+Demo bahar kampanyası: 1 Mart - 31 Mart 2026 tarihleri arasında geçerlidir.
+
+Demo kampanya indirimi: Seçili demo ürünlerde %15 indirim uygulanır.
+
+Demo kampanya kuralları:
+- İndirim kodu DEMO-BAHAR15 ile tek seferde kullanılabilir.
+- Kampanya diğer demo kuponlarla birleştirilemez.
+- Minimum sepet tutarı demo olarak 500 TRY'dir.
+
+Demo stok limiti: Kampanya kapsamındaki ürünler demo stokla sınırlıdır.
+
+Bu metin demo amaçlıdır; gerçek operasyonel prosedür yerine geçmez.

@@ -166,6 +166,36 @@ public sealed class DomainGuardedAgentServiceTests
     }
 
     [Fact]
+    public async Task AskAsync_ArcelikDocumentPolicyQuery_DoesNotReachAgentOrDocumentTool()
+    {
+        var guardrail = new StubDomainGuardrailService(
+            new DomainScopeResult(
+                DomainScopeDecision.OutOfScope,
+                DomainScopeReasonCode.ClassifiedOutOfScope));
+        var agentChatClient = new RecordingAgentChatClient(
+            CreateDocumentToolCallResponse());
+        var toolExecutor = new RecordingAgentToolExecutor();
+        var rawAgent = new OllamaAgentService(
+            agentChatClient,
+            toolExecutor,
+            Options.Create(new AgentOptions
+            {
+                MaxToolIterations = 5,
+                MaxToolCallsPerIteration = 3,
+                MaxNameSearchResults = 5,
+                MaxConversationTurns = 4
+            }));
+        var logger = new RecordingDomainGuardrailLogger();
+        var guardedAgent = new DomainGuardedAgentService(guardrail, rawAgent, logger);
+
+        string answer = await guardedAgent.AskAsync("Arçelik'in iade politikası nedir?");
+
+        Assert.Equal(DomainGuardedAgentService.OutOfScopeResponse, answer);
+        Assert.Equal(0, agentChatClient.CallCount);
+        Assert.Equal(0, toolExecutor.CallCount);
+    }
+
+    [Fact]
     public async Task AskAsync_BlockedRequest_DoesNotReachAgentChatOrToolExecutor()
     {
         var guardrail = new StubDomainGuardrailService(
@@ -235,6 +265,20 @@ public sealed class DomainGuardedAgentServiceTests
         Assert.Equal(1, guardrail.CallCount);
         Assert.Equal(0, rawAgent.CallCount);
         Assert.Empty(logger.Entries);
+    }
+
+    private static OllamaChatMessage CreateDocumentToolCallResponse()
+    {
+        return new OllamaChatMessage(
+            "assistant",
+            null,
+            [
+                new OllamaToolCall(
+                    "call-document",
+                    new OllamaToolCallFunction(
+                        Name: DocumentToolExecutor.SearchDocumentsToolName,
+                        Arguments: ParseJson("""{"query":"iade politikası"}""")))
+            ]);
     }
 
     private static OllamaChatMessage CreateCustomerToolCallResponse()

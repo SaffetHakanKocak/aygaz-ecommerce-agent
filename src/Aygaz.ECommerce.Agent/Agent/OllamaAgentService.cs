@@ -41,6 +41,10 @@ public sealed class OllamaAgentService : IAgentService
         "tool çağırma; write yeteneğinin olmadığını açıkça söyle. Tüm müşteri, sipariş, ürün, " +
         "stok, satış veya order-item verisini dökme; bulk işlem yapma. Bulunamadı deme ancak " +
         "lookup NotFound döndüyse. " +
+        "Politika/prosedür (iade, teslimat, kampanya, müşteri destek) sorularında kendi " +
+        "hafızandan bilgi üretme; yalnız search_documents kullan. search_documents NotFound " +
+        "döndürürse bilgi uydurma; mevcut demo dokümanlarda bilgi bulunamadığını söyle. " +
+        "Doküman tool sonucundaki metne dayanarak kısa Türkçe cevap ver. " +
         "Tool sonucunda olmayan telefon, ödeme, adres veya alanları uydurma. TotalAmount ve " +
         "UnitPrice para birimsiz sentetik sayılardır; kullanıcı açıkça istemedikçe gösterme " +
         "ve hiçbir para birimi ekleme. Sales tool para alanlarında yalnız tool'un döndürdüğü " +

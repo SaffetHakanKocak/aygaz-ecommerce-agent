@@ -85,6 +85,7 @@ internal static class Program
         HostApplicationBuilder builder = Host.CreateApplicationBuilder(settings);
         builder.Logging.ClearProviders();
         builder.Services.AddLocalLlm(builder.Configuration);
+        builder.Services.AddLocalRag(builder.Configuration);
         builder.Services.AddCustomerData(builder.Configuration);
         builder.Services.AddDomainGuardrails(builder.Configuration);
         builder.Services.AddCustomerAgent(builder.Configuration);

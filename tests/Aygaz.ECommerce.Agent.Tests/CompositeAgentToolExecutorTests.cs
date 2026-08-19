@@ -39,28 +39,35 @@ public sealed class CompositeAgentToolExecutorTests
         SalesAnalyticsToolExecutor.GetCustomerPurchaseSummaryToolName
     ];
 
+    private static readonly string[] DocumentToolNames =
+    [
+        DocumentToolExecutor.SearchDocumentsToolName
+    ];
+
     [Fact]
-    public void ToolDefinitions_ExposeExactUnionOfThirteenReadOnlyTools()
+    public void ToolDefinitions_ExposeExactUnionOfFourteenReadOnlyTools()
     {
         var customerModule = new RecordingToolModule(CustomerToolNames);
         var orderModule = new RecordingToolModule(OrderToolNames);
         var productModule = new RecordingToolModule(ProductToolNames);
         var inventoryModule = new RecordingToolModule(InventoryToolNames);
         var salesModule = new RecordingToolModule(SalesToolNames);
+        var documentModule = new RecordingToolModule(DocumentToolNames);
         var executor = new CompositeAgentToolExecutor(
-            [customerModule, orderModule, productModule, inventoryModule, salesModule],
+            [customerModule, orderModule, productModule, inventoryModule, salesModule, documentModule],
             new RecordingToolCallLogger());
 
-        Assert.Equal(13, executor.ToolDefinitions.Count);
+        Assert.Equal(14, executor.ToolDefinitions.Count);
         Assert.Equal(
             CustomerToolNames
                 .Concat(OrderToolNames)
                 .Concat(ProductToolNames)
                 .Concat(InventoryToolNames)
-                .Concat(SalesToolNames),
+                .Concat(SalesToolNames)
+                .Concat(DocumentToolNames),
             executor.ToolDefinitions.Select(definition => definition.Function.Name));
         Assert.Equal(
-            13,
+            14,
             executor.ToolDefinitions
                 .Select(definition => definition.Function.Name)
                 .Distinct(StringComparer.Ordinal)
@@ -167,6 +174,7 @@ public sealed class CompositeAgentToolExecutorTests
     [InlineData("delete_product")]
     [InlineData("raw_inventory_query")]
     [InlineData("get_all_sales")]
+    [InlineData("get_all_documents")]
     [InlineData("get_all_order_items")]
     [InlineData("run_query")]
     [InlineData("export_sales")]

@@ -1,0 +1,18 @@
+AYGAZ SENTETİK DEMO — TESLİMAT POLİTİKASI
+
+Bu doküman yalnızca geliştirme ve test amaçlı sentetik bir demo metnidir.
+Gerçek Aygaz teslimat politikası değildir.
+
+Demo standart teslimat süresi: Sipariş onayından sonra 2-4 iş günü.
+
+Demo ekspres teslimat: Seçili demo bölgelerde 1 iş günü (ek ücret uygulanır).
+
+Demo teslimat bölgeleri:
+- İstanbul, Ankara ve İzmir demo anında teslimat uygunluğu vardır.
+- Diğer illerde demo kargo partneri ile 3-5 iş günü teslimat yapılır.
+
+Demo kargo takibi: Sipariş numarası ile demo takip ekranından izlenebilir.
+
+Hasarlı teslimat: Teslim anında tutanak tutulmalı ve 24 saat içinde demo destek hattına bildirilmelidir.
+
+Bu metin demo amaçlıdır; gerçek operasyonel prosedür yerine geçmez.

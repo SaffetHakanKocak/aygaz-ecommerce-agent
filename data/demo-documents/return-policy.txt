@@ -1,0 +1,18 @@
+AYGAZ SENTETİK DEMO — İADE POLİTİKASI
+
+Bu doküman yalnızca geliştirme ve test amaçlı sentetik bir demo metnidir.
+Gerçek Aygaz iade politikası değildir.
+
+Demo iade süresi: Teslimattan sonra 14 gün içinde iade talebi oluşturulabilir.
+
+Demo iade koşulları:
+- Ürün kullanılmamış ve orijinal ambalajında olmalıdır.
+- Fatura veya sipariş numarası ibraz edilmelidir.
+- Demo kategorisindeki tüketim malzemeleri açıldıktan sonra iade kabul edilmez.
+
+Demo iade süreci:
+1. Müşteri destek kanalından iade talebi açılır.
+2. Ürün demo depoya ulaştığında 3 iş günü içinde inceleme yapılır.
+3. Onaylanan iadeler demo ödeme yöntemine göre 5-7 iş günü içinde iade edilir.
+
+Bu metin demo amaçlıdır; gerçek operasyonel prosedür yerine geçmez.

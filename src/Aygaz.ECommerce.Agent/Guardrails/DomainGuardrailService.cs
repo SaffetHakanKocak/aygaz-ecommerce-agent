@@ -226,12 +226,18 @@ public sealed class DomainGuardrailService : IDomainGuardrailService
               sentetik sipariş numarası, sentetik ürün SKU'su veya demo ürün araması Allowed.
             - Organizasyon adı yazılmasa bile sentetik satış özeti, en çok satan demo ürünler
               ve sentetik müşteri alışveriş özeti talepleri Allowed.
+            - Organizasyon adı yazılmasa bile iade politikası/süresi, teslimat politikası/süresi,
+              kampanya koşulları ve müşteri destek prosedürü soruları Allowed.
             - Selamlama ve kısa conversation-level mesajlar Allowed.
+            - Aygaz e-ticaret iade politikası, teslimat, kampanya koşulları ve müşteri destek
+              prosedürü soruları Allowed.
             - İzin verilen organizasyonun e-ticaret alanında olup henüz mevcut yeteneklerde
               bulunmayan operasyon talepleri yine Allowed. Capability eksikliği
               domain dışı anlamına gelmez; downstream agent bu yeteneğe sahip olmayabilir.
             - İzin verilenler dışındaki organizasyonlara ilişkin bilgi, müşteri, ürün, satış,
-              finans veya operasyon talepleri OutOfScope.
+              finans, operasyon veya politika/prosedür talepleri OutOfScope.
+            - Arçelik, Ford gibi dış organizasyonların iade politikası veya prosedür talepleri
+              OutOfScope.
             - Genel bilgi ve domain ile ilgisiz konular OutOfScope.
             - Dış organizasyon veya ilgisiz hedef içeren karma talepler fail-closed olarak
               OutOfScope.

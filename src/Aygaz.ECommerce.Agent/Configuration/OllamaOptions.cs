@@ -8,6 +8,8 @@ public sealed class OllamaOptions
 
     public string Model { get; init; } = string.Empty;
 
+    public string EmbeddingModel { get; init; } = "nomic-embed-text";
+
     public int GpuLayers { get; init; }
 
     public int ContextSize { get; init; } = 2048;

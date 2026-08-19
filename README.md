@@ -1,12 +1,13 @@
 # Aygaz E-Commerce AI Agent
 
-Kontrollü C# servisleriyle genişletilen yerel bir e-ticaret Agentic AI geliştirme projesidir. Local Ollama bağlantısı, tamamen sentetik Customer/Order/Product/Inventory/Sales veri katmanı, native tool calling, merkezi Aygaz domain guardrail'i ve read-only analitik yetenekleri Aşama 1-7 kapsamında tamamlanmıştır.
+Kontrollü C# servisleriyle genişletilen yerel bir e-ticaret Agentic AI geliştirme projesidir. Local Ollama bağlantısı, tamamen sentetik Customer/Order/Product/Inventory/Sales veri katmanı, native tool calling, merkezi Aygaz domain guardrail'i, read-only analitik yetenekleri ve local RAG doküman sorgulama Aşama 1-8 kapsamında tamamlanmıştır.
 
 ## Teknolojiler ve gereksinimler
 
 - .NET 9 SDK
 - C# console application
 - Ollama ve `qwen3:4b-instruct`
+- Ollama embedding modeli `nomic-embed-text` (local RAG için)
 - Entity Framework Core 9
 - SQLite
 - xUnit
@@ -25,6 +26,7 @@ Model yoksa indirin:
 
 ```powershell
 ollama pull qwen3:4b-instruct
+ollama pull nomic-embed-text
 ```
 
 Repository kökünde uygulamayı çalıştırın:
@@ -87,7 +89,8 @@ Allowed:    ahmet.yilmaz@example.com müşterisi kim?
 Allowed:    AYG-DEMO-1001 siparişi ne durumda?
 Allowed:    AYG-DEMO-PRD-001 stokta mı?
 Allowed:    Demo Product Alpha ürününü bul.
-OutOfScope: Arçelik hakkında bilgi ver.
+Allowed:    İade süresi kaç gün?
+OutOfScope: Arçelik'in iade politikası nedir?
 OutOfScope: Ford stoklarını getir.
 OutOfScope: Bugünkü futbol maçlarını anlat.
 Ambiguous:  Bunun durumunu kontrol et.
@@ -99,7 +102,7 @@ MVP'de her kullanıcı mesajı için ayrı guardrail inference çalışır. `All
 
 Aşama 3, herhangi bir agent framework kullanmadan Ollama'nın native `POST /api/chat` tool calling sözleşmesini doğrudan uygular. Semantic Kernel, Microsoft Agent Framework, LangChain veya AutoGen kullanılmaz.
 
-Agent'a yalnızca şu on üç read-only tool açılır:
+Agent'a yalnızca şu on dört read-only tool açılır:
 
 Customer tools:
 
@@ -129,7 +132,11 @@ Sales Analytics tools:
 - `get_top_selling_products(fromDate, toDate, limit)` — en çok satan en fazla 10 ürünün aggregate sonucu
 - `get_customer_purchase_summary(customerId, fromDate, toDate)` — müşterinin hesaplanmış alışveriş özeti
 
-`get_all_customers`, `get_all_orders`, `get_all_products`, `get_all_inventory`, `get_all_sales` ve `get_all_order_items` allow-list'te bulunmaz. Service-only ID metotları LLM'e tool olarak açılmaz. Create, update, delete, export, price/stock mutation, refund ve raw SQL tool'ları yoktur. Beş domain executor'ı exact tool adlarını kullanan `CompositeAgentToolExecutor` altında modüler olarak birleşir; reflection veya kullanıcı metnine dayalı routing yapılmaz.
+Document tool:
+
+- `search_documents(query)` — sentetik demo politika/prosedür dokümanlarında en alakalı en fazla 3 chunk
+
+`get_all_customers`, `get_all_orders`, `get_all_products`, `get_all_inventory`, `get_all_sales`, `get_all_order_items` ve `get_all_documents` allow-list'te bulunmaz. Service-only ID metotları LLM'e tool olarak açılmaz. Create, update, delete, export, price/stock mutation, refund ve raw SQL tool'ları yoktur. Altı domain executor'ı exact tool adlarını kullanan `CompositeAgentToolExecutor` altında modüler olarak birleşir; reflection veya kullanıcı metnine dayalı routing yapılmaz.
 
 Akış:
 
@@ -180,7 +187,23 @@ User → search_customers_by_name → Customer ID
                          Türkçe final yanıt
 ```
 
-Assistant'ın `tool_calls` mesajı ve ardından `role=tool` sonucu doğru sırayla conversation history'ye eklenir. Tool çağrısı kalmayana kadar loop devam eder. Customer → Order, Product → Inventory ve Customer → Sales zincirlerini C# seçmez; Ollama ilk lookup sonucundaki ID'yi gördükten sonra ikinci tool'u native olarak seçer. Iteration, bir yanıttaki tool sayısı, sonuç limitleri ve saklanan tamamlanmış conversation turn sayısı yapılandırmayla sınırlandırılır.
+Customer → Order → Document multi-tool zinciri de C# keyword routing olmadan aynı loop'ta yürür:
+
+```text
+User → search_customers_by_name → Customer ID
+                                  ↓
+                   get_latest_customer_order
+                                  ↓
+                         search_documents
+                                  ↓
+              return-policy / delivery-policy chunk
+                                  ↓
+                         Türkçe final yanıt
+```
+
+Örnek: `Ahmet Yılmaz'ın son siparişini kontrol et ve iade politikasını söyle.`
+
+Assistant'ın `tool_calls` mesajı ve ardından `role=tool` sonucu doğru sırayla conversation history'ye eklenir. Tool çağrısı kalmayana kadar loop devam eder. Customer → Order, Product → Inventory, Customer → Sales ve Customer → Order → Document zincirlerini C# seçmez; Ollama ilk lookup sonucundaki ID'yi veya bağlamı gördükten sonra sonraki tool'u native olarak seçer. Iteration, bir yanıttaki tool sayısı, sonuç limitleri ve saklanan tamamlanmış conversation turn sayısı yapılandırmayla sınırlandırılır.
 
 LLM'e EF entity, OrderItem veya tam DTO verilmez. Sales tool'ları ham sipariş satırları yerine C#/EF Core tarafından hesaplanmış `SUM`, `COUNT`, `AVG` ve ürün aggregate sonuçlarını döndürür; `Cancelled` siparişler sorgu tabanında dışlanır. Analitik para alanları `Commerce:CurrencyCode` üzerinden açıkça `TRY` taşır. Sentetik analiz referans tarihi `2026-03-06` olduğundan son 30 gün dahil `2026-02-05..2026-03-06` aralığıdır. Tool logları yalnız ad, güvenli argument özeti ve `Success | NotFound | Rejected` durumunu gösterir; isim sorguları ve müşteri ID'leri redakte edilir, sonuç payload'ı yazılmaz.
 
@@ -200,7 +223,46 @@ AYG-DEMO-PRD-003 stokta mı?
 Son 30 günlük e-ticaret satış özetini getir.
 Son 90 günde en çok satılan 5 ürünü göster.
 Ahmet Yılmaz son 90 günde ne kadar alışveriş yaptı?
+İade süresi kaç gün?
+Ahmet Yılmaz'ın son siparişini kontrol et ve iade politikasını söyle.
 ```
+
+## Local RAG / Doküman Sorgulama
+
+Aşama 8, vector database veya cloud servis kullanmadan yerel doküman sorgulama ekler. Semantic Kernel veya Azure kullanılmaz.
+
+Sentetik demo dokümanlar repository kökündeki `data/demo-documents/` altındadır:
+
+- `return-policy.txt`
+- `delivery-policy.txt`
+- `campaign-policy.txt`
+- `customer-support.txt`
+
+Gerçek Aygaz iç dokümanı kullanılmaz; metinler açıkça sentetik/demo olduğunu belirtir.
+
+Akış:
+
+```text
+Documents
+   ↓
+Text chunks (paragraf bazlı)
+   ↓
+Ollama POST /api/embed (nomic-embed-text)
+   ↓
+Memory içindeki vector index
+   ↓
+Cosine similarity
+   ↓
+En alakalı en fazla 3 chunk
+   ↓
+search_documents tool sonucu → LLM → Türkçe cevap
+```
+
+`search_documents(query)` yalnızca en alakalı maksimum 3 chunk döndürür; tüm dokümanları modele göndermez. Politika/prosedür sorularında agent kendi hafızasından bilgi üretmemeli; tool sonucu yoksa uydurmamalıdır.
+
+Örnek: `İade süresi kaç gün?` → `search_documents` → demo return policy chunk → `Demo iade politikasına göre süre 14 gündür.`
+
+RAG ayarları `appsettings.json` içindeki `Rag` ve `Ollama:EmbeddingModel` bölümlerinden yönetilir.
 
 ## Customer, Order, Product, Inventory ve Sales database
 
@@ -232,7 +294,7 @@ dotnet build .\Aygaz.ECommerce.Agent.sln --no-restore
 dotnet test .\Aygaz.ECommerce.Agent.sln --no-build --no-restore
 ```
 
-369 automated test; gerçek SQLite in-memory bağlantısıyla 48 OrderItem seed'ini, ilişkileri, cancelled exclusion'ı ve exact revenue/order/items/average/top-product hesaplarını doğrular. Elle yazılmış fake'ler exact 13-tool allow-list'ini, strict ISO tarih/limit doğrulamasını, minimum çıktıları, Customer → Sales history sırasını ve fail-closed guardrail'i kapsar. Automated testler local Ollama'ya bağımlı değildir; yalnız üç kritik Sales senaryosu gerçek Ollama ile ayrıca doğrulanmıştır.
+394 automated test; gerçek SQLite in-memory bağlantısıyla 48 OrderItem seed'ini, ilişkileri, cancelled exclusion'ı ve exact revenue/order/items/average/top-product hesaplarını doğrular. Elle yazılmış fake'ler exact 14-tool allow-list'ini, document chunking/retrieval, strict ISO tarih/limit doğrulamasını, minimum çıktıları, Customer → Sales/Document history sırasını ve fail-closed guardrail'i kapsar. Automated testler local Ollama'ya bağımlı değildir; yalnız üç kritik RAG/agent senaryosu gerçek Ollama ile ayrıca doğrulanmıştır.
 
 ## Roadmap
 
@@ -243,6 +305,6 @@ dotnet test .\Aygaz.ECommerce.Agent.sln --no-build --no-restore
 - Aşama 5 — Orders — **TAMAMLANDI**
 - Aşama 6 — Products / Inventory — **TAMAMLANDI**
 - Aşama 7 — Sales Analysis — **TAMAMLANDI**
-- Aşama 8 — RAG
+- Aşama 8 — RAG — **TAMAMLANDI**
 - Aşama 9 — Authorization / Audit
 - Aşama 10 — Web UI
