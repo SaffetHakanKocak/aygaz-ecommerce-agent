@@ -1,11 +1,11 @@
 # Aygaz E-Commerce AI Agent
 
-Kontrollü C# servisleriyle genişletilen yerel bir e-ticaret Agentic AI geliştirme projesidir. Local Ollama bağlantısı, tamamen sentetik Customer/Order/Product/Inventory/Sales veri katmanı, native tool calling, merkezi Aygaz domain guardrail'i, read-only analitik yetenekleri ve local RAG doküman sorgulama Aşama 1-8 kapsamında tamamlanmıştır.
+Kontrollü C# servisleriyle genişletilen yerel bir e-ticaret Agentic AI geliştirme projesidir. Local Ollama bağlantısı, tamamen sentetik Customer/Order/Product/Inventory/Sales veri katmanı, native tool calling, merkezi Aygaz domain guardrail'i, read-only analitik yetenekleri, local RAG doküman sorgulama ve localhost Web Chat UI Aşama 1-9 kapsamında tamamlanmıştır.
 
 ## Teknolojiler ve gereksinimler
 
 - .NET 9 SDK
-- C# console application
+- C# console application + ASP.NET Core Web API
 - Ollama ve `qwen3:4b-instruct`
 - Ollama embedding modeli `nomic-embed-text` (local RAG için)
 - Entity Framework Core 9
@@ -29,7 +29,15 @@ ollama pull qwen3:4b-instruct
 ollama pull nomic-embed-text
 ```
 
-Repository kökünde uygulamayı çalıştırın:
+Repository kökünde **Web Chat UI** (ana demo yolu):
+
+```powershell
+dotnet run --project .\src\Aygaz.ECommerce.Web\Aygaz.ECommerce.Web.csproj
+```
+
+Tarayıcı: **http://localhost:5280**
+
+Alternatif olarak console uygulaması:
 
 ```powershell
 dotnet run --project .\src\Aygaz.ECommerce.Agent\Aygaz.ECommerce.Agent.csproj
@@ -264,6 +272,60 @@ search_documents tool sonucu → LLM → Türkçe cevap
 
 RAG ayarları `appsettings.json` içindeki `Rag` ve `Ollama:EmbeddingModel` bölümlerinden yönetilir.
 
+## Web API ve Chat UI
+
+Aşama 9, mevcut Agent/Guardrail/Tool/RAG katmanını yeniden yazmadan ASP.NET Core Web projesi üzerinden localhost demo sunar. Authentication, JWT ve authorization **bilinçli olarak sonraya bırakılmıştır**.
+
+Proje yapısı:
+
+```text
+src/
+  Aygaz.ECommerce.Agent/   → iş mantığı (console + paylaşılan servisler)
+  Aygaz.ECommerce.Web/     → Web API + static chat UI
+```
+
+Akış:
+
+```text
+Browser → POST /api/chat → InMemoryChatSessionStore
+        → IGuardedAgentService → Domain Guardrail → Ollama Agent
+        → mevcut tool'lar → SQLite / RAG → JSON response → Chat UI
+```
+
+Endpoint'ler:
+
+| Endpoint | Açıklama |
+|----------|----------|
+| `GET /health` | Basit durum kontrolü (`{"status":"ok"}`) |
+| `POST /api/chat` | Guarded agent ile sohbet |
+| `POST /api/chat/clear` | Oturum geçmişini sıfırla |
+
+`POST /api/chat` request:
+
+```json
+{
+  "message": "Ahmet Yılmaz'ın son siparişi nedir?",
+  "sessionId": "opsiyonel-browser-session-id"
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "message": "...",
+  "scope": "Allowed",
+  "sessionId": "..."
+}
+```
+
+In-memory session: browser `sessionId` ile server-side DI scope korunur; `MaxConversationTurns` limiti aynen geçerlidir. API ham tool payload, entity veya raw LLM response döndürmez.
+
+Development ortamında Swagger: **http://localhost:5280/swagger**
+
+Chat UI vanilla HTML/CSS/JS ile gelir; örnek prompt butonları, loading indicator, hata mesajı ve sohbet temizleme içerir.
+
 ## Customer, Order, Product, Inventory ve Sales database
 
 - Database: SQLite
@@ -294,7 +356,7 @@ dotnet build .\Aygaz.ECommerce.Agent.sln --no-restore
 dotnet test .\Aygaz.ECommerce.Agent.sln --no-build --no-restore
 ```
 
-394 automated test; gerçek SQLite in-memory bağlantısıyla 48 OrderItem seed'ini, ilişkileri, cancelled exclusion'ı ve exact revenue/order/items/average/top-product hesaplarını doğrular. Elle yazılmış fake'ler exact 14-tool allow-list'ini, document chunking/retrieval, strict ISO tarih/limit doğrulamasını, minimum çıktıları, Customer → Sales/Document history sırasını ve fail-closed guardrail'i kapsar. Automated testler local Ollama'ya bağımlı değildir; yalnız üç kritik RAG/agent senaryosu gerçek Ollama ile ayrıca doğrulanmıştır.
+403 automated test; gerçek SQLite in-memory bağlantısıyla seed/ilişki/analitik hesaplarını, exact 14-tool allow-list'ini, document chunking/retrieval, Web API validation/guardrail/session davranışını ve fail-closed guardrail'i kapsar. Automated testler local Ollama'ya bağımlı değildir.
 
 ## Roadmap
 
@@ -306,5 +368,6 @@ dotnet test .\Aygaz.ECommerce.Agent.sln --no-build --no-restore
 - Aşama 6 — Products / Inventory — **TAMAMLANDI**
 - Aşama 7 — Sales Analysis — **TAMAMLANDI**
 - Aşama 8 — RAG — **TAMAMLANDI**
-- Aşama 9 — Authorization / Audit
-- Aşama 10 — Web UI
+- Aşama 9 — Web API + Chat UI — **TAMAMLANDI**
+- Aşama 10 — Authentication / Authorization / Audit
+- Aşama 11 — Azure / Deployment değerlendirmesi

@@ -29,6 +29,14 @@ public sealed class DomainGuardedAgentService : IGuardedAgentService
         string userMessage,
         CancellationToken cancellationToken = default)
     {
+        GuardedAgentResponse response = await AskDetailedAsync(userMessage, cancellationToken);
+        return response.Message;
+    }
+
+    public async Task<GuardedAgentResponse> AskDetailedAsync(
+        string userMessage,
+        CancellationToken cancellationToken = default)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(userMessage);
 
         string normalizedMessage = userMessage.Trim();
@@ -56,10 +64,18 @@ public sealed class DomainGuardedAgentService : IGuardedAgentService
 
         return scopeResult.Decision switch
         {
-            DomainScopeDecision.Allowed =>
+            DomainScopeDecision.Allowed => new GuardedAgentResponse(
                 await _agentService.AskAsync(normalizedMessage, cancellationToken),
-            DomainScopeDecision.OutOfScope => OutOfScopeResponse,
-            _ => AmbiguousResponse
+                nameof(DomainScopeDecision.Allowed),
+                Success: true),
+            DomainScopeDecision.OutOfScope => new GuardedAgentResponse(
+                OutOfScopeResponse,
+                nameof(DomainScopeDecision.OutOfScope),
+                Success: true),
+            _ => new GuardedAgentResponse(
+                AmbiguousResponse,
+                nameof(DomainScopeDecision.Ambiguous),
+                Success: true)
         };
     }
 

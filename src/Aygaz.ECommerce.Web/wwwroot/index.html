@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aygaz E-Commerce AI Agent</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>Aygaz E-Commerce AI Agent</h1>
+      <p class="subtitle">
+        Sentetik demo verileri, guardrail koruması ve yerel Ollama agent ile localhost chat arayüzü.
+        Gerçek Aygaz verisi kullanılmaz.
+      </p>
+    </header>
+
+    <section class="suggestions" aria-label="Örnek sorular">
+      <button type="button" class="suggestion" data-prompt="Ahmet Yılmaz'ın son siparişini getir">
+        Ahmet Yılmaz'ın son siparişini getir
+      </button>
+      <button type="button" class="suggestion" data-prompt="AYG-DEMO-PRD-001 stokta mı?">
+        AYG-DEMO-PRD-001 stokta mı?
+      </button>
+      <button type="button" class="suggestion" data-prompt="Son 30 günlük satış özetini getir">
+        Son 30 günlük satış özetini getir
+      </button>
+      <button type="button" class="suggestion" data-prompt="İade süresi kaç gün?">
+        İade süresi kaç gün?
+      </button>
+    </section>
+
+    <main id="messages" class="messages" aria-live="polite"></main>
+
+    <div id="error" class="error hidden" role="alert"></div>
+
+    <form id="chat-form" class="composer">
+      <textarea
+        id="message-input"
+        rows="2"
+        maxlength="1000"
+        placeholder="Sorunuzu yazın..."
+        aria-label="Mesaj"></textarea>
+      <div class="composer-actions">
+        <button type="button" id="clear-button" class="secondary">Sohbeti temizle</button>
+        <button type="submit" id="send-button">Gönder</button>
+      </div>
+    </form>
+
+    <div id="loading" class="loading hidden" aria-hidden="true">
+      <span class="spinner"></span>
+      <span>Agent yanıtı hazırlanıyor...</span>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
