@@ -1,11 +1,14 @@
 ﻿#pragma warning disable SKEXP0070
 #pragma warning disable SKEXP0110
 
-using Aygaz.AgentFramework.Agents;
 using Aygaz.AgentFramework.Configuration;
 using Aygaz.AgentFramework.Execution;
 using Aygaz.AgentFramework.Kernel;
 using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Agents;
+using AgentDefinition = Aygaz.AgentFramework.Agents.AgentDefinition;
+using IAgentFactory = Aygaz.AgentFramework.Agents.IAgentFactory;
+using SemanticKernelAgentFactory = Aygaz.AgentFramework.Agents.SemanticKernelAgentFactory;
 
 namespace Aygaz.AgentFramework.Playground;
 
@@ -14,58 +17,72 @@ internal static class Program
     private static async Task Main()
     {
         Console.WriteLine("Aygaz Agent Framework - Semantic Kernel Playground");
+        Console.WriteLine("Agent Isolation Demo");
         Console.WriteLine();
 
-        // 1. Options
         var options = new SemanticKernelOptions
         {
             ModelId = "qwen3:1.7b",
             Endpoint = "http://localhost:11434"
         };
 
-        // 2. Kernel
         var kernelFactory = new SemanticKernelFactory(options);
-        Microsoft.SemanticKernel.Kernel kernel = kernelFactory.CreateKernel();
-
-        // 3. Plugin registration (yalnızca DemoAgent'a ait plugin)
-        kernel.Plugins.AddFromObject(new DemoPlugin());
-        Console.WriteLine("Plugin registered: DemoPlugin");
-
-        // 4. Function invocation filter
-        kernel.FunctionInvocationFilters.Add(new FunctionInvocationLogger());
-
-        // 5. Agent definition
-        var definition = new AgentDefinition
-        {
-            Name = "DemoAgent",
-            Instructions = "You are the demo agent for Aygaz Agent Framework. Use the available functions when they are needed. Do not invent function results."
-        };
-
-        // 6. Agent factory
         var agentFactory = new SemanticKernelAgentFactory();
-        var agent = agentFactory.CreateAgent(definition, kernel);
-        Console.WriteLine($"Agent created: {agent.Name}");
-        Console.WriteLine();
-
-        // 7. Agent runner
         IAgentRunner runner = new SemanticKernelAgentRunner();
 
-        // 8. Console chat
+        // SystemAgent: ayrı Kernel, yalnızca SystemPlugin
+        Microsoft.SemanticKernel.Kernel systemKernel = kernelFactory.CreateKernel();
+        systemKernel.Plugins.AddFromObject(new SystemPlugin());
+        systemKernel.FunctionInvocationFilters.Add(new FunctionInvocationLogger());
+
+        var systemAgent = agentFactory.CreateAgent(new AgentDefinition
+        {
+            Name = "SystemAgent",
+            Instructions = "You are the system info agent. Use the available functions to answer system-related questions. Do not invent function results."
+        }, systemKernel);
+
+        Console.WriteLine("Agent created: SystemAgent (Plugin: SystemPlugin)");
+
+        // MathAgent: ayrı Kernel, yalnızca MathPlugin
+        Microsoft.SemanticKernel.Kernel mathKernel = kernelFactory.CreateKernel();
+        mathKernel.Plugins.AddFromObject(new MathPlugin());
+        mathKernel.FunctionInvocationFilters.Add(new FunctionInvocationLogger());
+
+        var mathAgent = agentFactory.CreateAgent(new AgentDefinition
+        {
+            Name = "MathAgent",
+            Instructions = "You are the math agent. Use the available functions to perform calculations. Do not invent function results."
+        }, mathKernel);
+
+        Console.WriteLine("Agent created: MathAgent (Plugin: MathPlugin)");
+        Console.WriteLine();
+
         while (true)
         {
+            Console.WriteLine("Agent seçin:");
+            Console.WriteLine("  1 - SystemAgent");
+            Console.WriteLine("  2 - MathAgent");
+            Console.WriteLine("  0 - Exit");
             Console.Write("> ");
+
+            string? choice = Console.ReadLine();
+            if (choice == "0" || choice == null) break;
+
+            ChatCompletionAgent selectedAgent = choice switch
+            {
+                "1" => systemAgent,
+                "2" => mathAgent,
+                _ => systemAgent
+            };
+
+            Console.Write("Mesaj: ");
             string? input = Console.ReadLine();
-
-            if (string.IsNullOrWhiteSpace(input))
-                continue;
-
-            if (input.Equals("exit", StringComparison.OrdinalIgnoreCase)
-                || input.Equals("quit", StringComparison.OrdinalIgnoreCase))
-                break;
+            if (string.IsNullOrWhiteSpace(input)) continue;
 
             try
             {
-                var response = await runner.InvokeAsync(agent, input);
+                Console.WriteLine($"  Agent invoked: {selectedAgent.Name}");
+                var response = await runner.InvokeAsync(selectedAgent, input);
 
                 Console.WriteLine();
                 Console.WriteLine(response.Content);
