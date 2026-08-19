@@ -15,11 +15,16 @@ public sealed class OllamaEmbeddingClient : IOllamaEmbeddingClient
 
     private readonly HttpClient _httpClient;
     private readonly OllamaOptions _options;
+    private readonly IOllamaCallTracker _callTracker;
 
-    public OllamaEmbeddingClient(HttpClient httpClient, IOptions<OllamaOptions> options)
+    public OllamaEmbeddingClient(
+        HttpClient httpClient,
+        IOptions<OllamaOptions> options,
+        IOllamaCallTracker callTracker)
     {
         _httpClient = httpClient;
         _options = options.Value;
+        _callTracker = callTracker;
     }
 
     public async Task<IReadOnlyList<float>> EmbedAsync(
@@ -31,7 +36,9 @@ public sealed class OllamaEmbeddingClient : IOllamaEmbeddingClient
         var requestBody = new OllamaEmbedRequest(
             _options.EmbeddingModel,
             input,
-            new OllamaEmbedOptions(_options.GpuLayers));
+            KeepAlive: _options.KeepAlive);
+
+        _callTracker.RecordCall();
 
         try
         {

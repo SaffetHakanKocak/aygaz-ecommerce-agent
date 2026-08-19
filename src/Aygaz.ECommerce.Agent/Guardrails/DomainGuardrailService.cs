@@ -80,7 +80,9 @@ public sealed class DomainGuardrailService : IDomainGuardrailService
             Tools: null,
             Format: ClassifierResponseSchema,
             Temperature: 0,
-            MaxOutputTokens: _options.ClassifierMaxOutputTokens);
+            MaxOutputTokens: _options.ClassifierMaxOutputTokens,
+            Think: false,
+            Model: _options.Model);
 
         OllamaChatMessage? classifierResponse;
 

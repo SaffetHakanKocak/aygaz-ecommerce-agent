@@ -1,12 +1,12 @@
+using System.Text.Json.Serialization;
+
 namespace Aygaz.ECommerce.Agent.Models;
 
 public sealed record OllamaEmbedRequest(
     string Model,
     string Input,
-    OllamaEmbedOptions? Options = null);
-
-public sealed record OllamaEmbedOptions(
-    [property: System.Text.Json.Serialization.JsonPropertyName("num_gpu")]
-    int GpuLayers);
+    [property: JsonPropertyName("keep_alive")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? KeepAlive = null);
 
 public sealed record OllamaEmbedResponse(float[][] Embeddings);

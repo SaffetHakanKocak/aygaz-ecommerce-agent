@@ -8,7 +8,8 @@ public sealed record OllamaChatSettings(
     JsonElement? Format = null,
     double? Temperature = null,
     int? MaxOutputTokens = null,
-    bool? Think = null);
+    bool? Think = null,
+    string? Model = null);
 
 public sealed record OllamaChatRequest(
     [property: JsonPropertyName("model")] string Model,
@@ -21,10 +22,12 @@ public sealed record OllamaChatRequest(
     IReadOnlyCollection<OllamaToolDefinition>? Tools = null,
     [property: JsonPropertyName("format")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    JsonElement? Format = null);
+    JsonElement? Format = null,
+    [property: JsonPropertyName("keep_alive")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? KeepAlive = null);
 
 public sealed record OllamaRuntimeOptions(
-    [property: JsonPropertyName("num_gpu")] int GpuLayers,
     [property: JsonPropertyName("num_ctx")] int ContextSize,
     [property: JsonPropertyName("num_predict")] int MaxOutputTokens,
     [property: JsonPropertyName("temperature")]

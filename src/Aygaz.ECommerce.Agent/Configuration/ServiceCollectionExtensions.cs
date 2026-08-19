@@ -26,14 +26,16 @@ public static class ServiceCollectionExtensions
                 options => !string.IsNullOrWhiteSpace(options.EmbeddingModel),
                 "Ollama:EmbeddingModel boş olamaz.")
             .Validate(
-                options => options.GpuLayers >= 0,
-                "Ollama:GpuLayers negatif olamaz.")
+                options => !string.IsNullOrWhiteSpace(options.KeepAlive),
+                "Ollama:KeepAlive boş olamaz.")
             .Validate(
                 options => options.ContextSize > 0,
                 "Ollama:ContextSize sıfırdan büyük olmalıdır.")
             .Validate(
                 options => options.MaxOutputTokens > 0,
                 "Ollama:MaxOutputTokens sıfırdan büyük olmalıdır.");
+
+        services.AddSingleton<IOllamaCallTracker, OllamaCallTracker>();
 
         services.AddHttpClient<IOllamaChatClient, OllamaChatClient>((serviceProvider, httpClient) =>
         {

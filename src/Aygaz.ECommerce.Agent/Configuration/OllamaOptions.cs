@@ -10,7 +10,7 @@ public sealed class OllamaOptions
 
     public string EmbeddingModel { get; init; } = "nomic-embed-text";
 
-    public int GpuLayers { get; init; }
+    public string KeepAlive { get; init; } = "5m";
 
     public int ContextSize { get; init; } = 2048;
 

@@ -17,6 +17,9 @@ public static class DomainGuardrailServiceCollectionExtensions
                 options => IsValidPolicyValue(options.Domain),
                 "DomainGuardrail:Domain boş, aşırı uzun veya wildcard olamaz.")
             .Validate(
+                options => !string.IsNullOrWhiteSpace(options.Model),
+                "DomainGuardrail:Model boş olamaz.")
+            .Validate(
                 options => IsValidPolicyList(options.AllowedOrganizations, 10),
                 "DomainGuardrail:AllowedOrganizations 1-10 geçerli değer içermelidir.")
             .Validate(

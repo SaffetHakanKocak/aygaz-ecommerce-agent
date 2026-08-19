@@ -15,11 +15,16 @@ public sealed class OllamaChatClient : IOllamaChatClient
 
     private readonly HttpClient _httpClient;
     private readonly OllamaOptions _options;
+    private readonly IOllamaCallTracker _callTracker;
 
-    public OllamaChatClient(HttpClient httpClient, IOptions<OllamaOptions> options)
+    public OllamaChatClient(
+        HttpClient httpClient,
+        IOptions<OllamaOptions> options,
+        IOllamaCallTracker callTracker)
     {
         _httpClient = httpClient;
         _options = options.Value;
+        _callTracker = callTracker;
     }
 
     public async Task<OllamaChatMessage> ChatAsync(
@@ -34,18 +39,22 @@ public sealed class OllamaChatClient : IOllamaChatClient
             throw new ArgumentException("En az bir sohbet mesajı gereklidir.", nameof(messages));
         }
 
+        string model = settings?.Model ?? _options.Model;
+
         var requestBody = new OllamaChatRequest(
-            _options.Model,
+            model,
             messages,
             Stream: false,
             Think: settings?.Think ?? false,
             Options: new OllamaRuntimeOptions(
-                _options.GpuLayers,
                 _options.ContextSize,
                 settings?.MaxOutputTokens ?? _options.MaxOutputTokens,
                 settings?.Temperature),
             Tools: settings?.Tools,
-            Format: settings?.Format);
+            Format: settings?.Format,
+            KeepAlive: _options.KeepAlive);
+
+        _callTracker.RecordCall();
 
         try
         {

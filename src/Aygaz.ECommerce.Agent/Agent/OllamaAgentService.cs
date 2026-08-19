@@ -65,7 +65,7 @@ public sealed class OllamaAgentService : IAgentService
         _toolExecutor = toolExecutor;
         _chatSettings = new OllamaChatSettings(
             Tools: toolExecutor.ToolDefinitions,
-            Think: true);
+            Think: false);
         _options = options.Value;
     }
 

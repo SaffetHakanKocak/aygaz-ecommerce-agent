@@ -260,12 +260,13 @@ public sealed class DomainGuardrailServiceTests
             Options.Create(new OllamaOptions
             {
                 BaseUrl = "http://localhost:11434/",
-                Model = "test-model",
-                GpuLayers = 0,
+                Model = "agent-model",
+                KeepAlive = "5m",
                 ContextSize = 2048,
                 MaxOutputTokens = 256
-            }));
-        var service = CreateService(ollamaClient);
+            }),
+            new OllamaCallTracker());
+        var service = CreateService(ollamaClient, classifierModel: "guardrail-model");
 
         DomainScopeResult result = await service.EvaluateAsync("Merhaba");
 
@@ -277,12 +278,15 @@ public sealed class DomainGuardrailServiceTests
             Assert.IsType<string>(handler.RequestBody));
         JsonElement request = requestDocument.RootElement;
 
+        Assert.Equal("guardrail-model", request.GetProperty("model").GetString());
+        Assert.Equal("5m", request.GetProperty("keep_alive").GetString());
         Assert.False(request.TryGetProperty("tools", out _));
         Assert.False(request.GetProperty("stream").GetBoolean());
         Assert.False(request.GetProperty("think").GetBoolean());
         Assert.Equal("object", request.GetProperty("format").GetProperty("type").GetString());
 
         JsonElement runtimeOptions = request.GetProperty("options");
+        Assert.False(runtimeOptions.TryGetProperty("num_gpu", out _));
         Assert.Equal(0d, runtimeOptions.GetProperty("temperature").GetDouble());
         Assert.Equal(32, runtimeOptions.GetProperty("num_predict").GetInt32());
     }
@@ -478,13 +482,15 @@ public sealed class DomainGuardrailServiceTests
 
     private static DomainGuardrailService CreateService(
         IOllamaChatClient chatClient,
-        int maxInputCharacters = 1000)
+        int maxInputCharacters = 1000,
+        string classifierModel = "guardrail-model")
     {
         return new DomainGuardrailService(
             chatClient,
             Options.Create(new DomainGuardrailOptions
             {
                 Domain = "E-Commerce",
+                Model = classifierModel,
                 AllowedOrganizations = ["Aygaz"],
                 AllowedCapabilities =
                 [

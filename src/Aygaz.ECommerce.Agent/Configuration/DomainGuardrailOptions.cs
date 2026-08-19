@@ -6,6 +6,8 @@ public sealed class DomainGuardrailOptions
 
     public string Domain { get; init; } = string.Empty;
 
+    public string Model { get; init; } = string.Empty;
+
     public string[] AllowedOrganizations { get; init; } = [];
 
     public string[] AllowedCapabilities { get; init; } = [];
