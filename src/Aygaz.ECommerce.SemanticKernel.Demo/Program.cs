@@ -6,6 +6,7 @@ using Aygaz.AgentFramework.Agents;
 using Aygaz.AgentFramework.Configuration;
 using Aygaz.AgentFramework.Execution;
 using Aygaz.AgentFramework.Kernel;
+using Aygaz.AgentFramework.Observability;
 using Aygaz.AgentFramework.Routing;
 using Aygaz.ECommerce.Agent.Configuration;
 using Aygaz.ECommerce.Agent.Data;
@@ -14,13 +15,12 @@ using Aygaz.ECommerce.SemanticKernel.Agents;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.SemanticKernel;
 
 namespace Aygaz.ECommerce.SemanticKernel.Demo;
 
 internal static class Program
 {
-    private static async Task Main()
+    private static async Task Main(string[] args)
     {
         Console.InputEncoding = Encoding.UTF8;
         Console.OutputEncoding = Encoding.UTF8;
@@ -42,28 +42,37 @@ internal static class Program
             await initializer.InitializeAsync();
         }
 
+        string modelId = args.Length > 0 && !string.IsNullOrWhiteSpace(args[0])
+            ? args[0].Trim()
+            : hostBuilder.Configuration["SemanticKernel:ModelId"] ?? "qwen3:1.7b";
+        string endpoint = hostBuilder.Configuration["SemanticKernel:Endpoint"] ?? "http://localhost:11434";
+
         var options = new SemanticKernelOptions
         {
-            ModelId = "qwen3:1.7b",
-            Endpoint = "http://localhost:11434"
+            ModelId = modelId,
+            Endpoint = endpoint
         };
 
         var kernelFactory = new SemanticKernelFactory(options);
         var agentFactory = new SemanticKernelAgentFactory();
         var registry = new AgentRegistry();
         var router = new AgentRouter();
+        var telemetry = new KernelInvocationTelemetry();
+        var telemetryFilter = new KernelInvocationTelemetryFilter(telemetry);
         var registrar = new SemanticKernelAgentRegistrar(
             kernelFactory,
             agentFactory,
             registry,
             router,
-            [new FunctionInvocationLogger()]);
+            [telemetryFilter],
+            [telemetryFilter]);
         IAgentRunner runner = new SemanticKernelAgentRunner();
 
         await using AsyncServiceScope scope = host.Services.CreateAsyncScope();
         var customerService = scope.ServiceProvider.GetRequiredService<ICustomerService>();
 
         CustomerAgentRegistration.Register(registrar, customerService);
+        Console.WriteLine($"Model: {options.ModelId}");
         Console.WriteLine($"Registered: {CustomerAgentRegistration.AgentName} → route: {CustomerAgentRegistration.RouteKey}");
         Console.WriteLine();
 
@@ -92,9 +101,14 @@ internal static class Program
 
             try
             {
+                telemetry.Reset();
                 var response = await runner.InvokeAsync(agent, input);
                 Console.WriteLine();
                 Console.WriteLine(response.Content);
+                Console.WriteLine($"  function: {telemetry.LastFunctionName ?? "(none)"}");
+                Console.WriteLine($"  function invocation count: {telemetry.FunctionInvocationCount}");
+                Console.WriteLine($"  LLM inference count: {telemetry.EstimateLlmInferenceCount()}");
+                Console.WriteLine($"  fast path: {(telemetry.Terminated ? "yes" : "no")}");
                 Console.WriteLine($"  [{response.Duration.TotalSeconds:F1}s]");
                 Console.WriteLine();
             }
@@ -104,16 +118,5 @@ internal static class Program
                 Console.WriteLine();
             }
         }
-    }
-}
-
-internal sealed class FunctionInvocationLogger : IFunctionInvocationFilter
-{
-    public async Task OnFunctionInvocationAsync(
-        FunctionInvocationContext context,
-        Func<FunctionInvocationContext, Task> next)
-    {
-        Console.WriteLine($"  KernelFunction invoked: {context.Function.Name}");
-        await next(context);
     }
 }

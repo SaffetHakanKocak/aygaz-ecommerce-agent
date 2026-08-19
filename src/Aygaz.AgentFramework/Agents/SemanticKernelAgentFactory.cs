@@ -1,3 +1,4 @@
+#pragma warning disable SKEXP0070
 #pragma warning disable SKEXP0110
 
 using Microsoft.SemanticKernel;
@@ -18,7 +19,8 @@ public sealed class SemanticKernelAgentFactory : IAgentFactory
             Kernel = kernel,
             Arguments = new KernelArguments(new OllamaPromptExecutionSettings
             {
-                FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
+                FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(),
+                Temperature = 0
             })
         };
     }

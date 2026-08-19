@@ -28,6 +28,17 @@ public sealed class SemanticKernelAgentRunner : IAgentRunner
             if (!string.IsNullOrEmpty(response.Content))
             {
                 result = response.Content;
+                continue;
+            }
+
+            foreach (KernelContent item in response.Items)
+            {
+                if (item is FunctionResultContent functionResult
+                    && functionResult.Result is string formatted
+                    && !string.IsNullOrWhiteSpace(formatted))
+                {
+                    result = formatted;
+                }
             }
         }
 

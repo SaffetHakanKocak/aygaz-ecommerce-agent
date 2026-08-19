@@ -28,16 +28,19 @@ public sealed class SemanticKernelAgentRegistrar : IAgentRegistrar
     }
 
     private readonly IReadOnlyList<IFunctionInvocationFilter>? _filters;
+    private readonly IReadOnlyList<IAutoFunctionInvocationFilter>? _autoFunctionInvocationFilters;
 
     public SemanticKernelAgentRegistrar(
         IKernelFactory kernelFactory,
         IAgentFactory agentFactory,
         IAgentRegistry registry,
         IAgentRouter router,
-        IReadOnlyList<IFunctionInvocationFilter>? filters)
+        IReadOnlyList<IFunctionInvocationFilter>? filters,
+        IReadOnlyList<IAutoFunctionInvocationFilter>? autoFunctionInvocationFilters = null)
         : this(kernelFactory, agentFactory, registry, router)
     {
         _filters = filters;
+        _autoFunctionInvocationFilters = autoFunctionInvocationFilters;
     }
 
     private readonly object _sync = new();
@@ -69,6 +72,12 @@ public sealed class SemanticKernelAgentRegistrar : IAgentRegistrar
             {
                 foreach (var filter in _filters)
                     kernel.FunctionInvocationFilters.Add(filter);
+            }
+
+            if (_autoFunctionInvocationFilters != null)
+            {
+                foreach (var filter in _autoFunctionInvocationFilters)
+                    kernel.AutoFunctionInvocationFilters.Add(filter);
             }
 
             foreach (var plugin in registration.Plugins)

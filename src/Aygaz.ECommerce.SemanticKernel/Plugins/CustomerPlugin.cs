@@ -27,9 +27,9 @@ public sealed class CustomerPlugin
     }
 
     [KernelFunction("get_customer_by_email")]
-    [Description("Looks up a single customer by exact email address. Call only when the user provided a specific email address. Do not call for bulk customer listing.")]
+    [Description("Use only when the user provided an explicit email address. Do not use for name search or bulk listing.")]
     public async Task<CustomerAgentResult?> GetCustomerByEmailAsync(
-        [Description("The customer's exact email address.")] string email,
+        [Description("Exact email address.")] string email,
         CancellationToken cancellationToken = default)
     {
         CustomerDto? customer = await _customerService.GetCustomerByEmailAsync(
@@ -40,9 +40,9 @@ public sealed class CustomerPlugin
     }
 
     [KernelFunction("get_customer_by_id")]
-    [Description("Looks up a single customer by positive customer id. Call only when the user provided a specific numeric customer id. Do not call for bulk customer listing.")]
+        [Description("Use only when the user gave a specific numeric customer id or customer number. Do not use for email or name search.")]
     public async Task<CustomerAgentResult?> GetCustomerByIdAsync(
-        [Description("The customer's positive numeric identifier.")] int id,
+        [Description("Numeric customer id.")] int id,
         CancellationToken cancellationToken = default)
     {
         CustomerDto? customer = await _customerService.GetCustomerByIdAsync(id, cancellationToken);
@@ -50,9 +50,9 @@ public sealed class CustomerPlugin
     }
 
     [KernelFunction("search_customers_by_name")]
-    [Description("Searches customers by a specific person's first name, last name, or full name. Call only when the user explicitly provided a person name. Never call this when the user asks to list, fetch, or show all customers without naming a specific person.")]
+    [Description("Use only when the user provided a person's first and/or last name. Do not use for bulk listing, generic customer list requests, or email lookup.")]
     public async Task<IReadOnlyList<CustomerAgentResult>> SearchCustomersByNameAsync(
-        [Description("The customer's first name, last name, or full name. Must be a person name, not a generic listing request.")] string query,
+        [Description("Person first name, last name, or full name.")] string query,
         CancellationToken cancellationToken = default)
     {
         string trimmedQuery = query?.Trim() ?? string.Empty;

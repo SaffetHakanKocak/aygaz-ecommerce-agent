@@ -9,6 +9,7 @@ using Aygaz.ECommerce.Agent.Models;
 using Aygaz.ECommerce.Agent.Models.Agent;
 using Aygaz.ECommerce.Agent.Services;
 using Aygaz.ECommerce.SemanticKernel.Agents;
+using Aygaz.ECommerce.SemanticKernel.Formatting;
 using Aygaz.ECommerce.SemanticKernel.Plugins;
 
 namespace Aygaz.ECommerce.SemanticKernel.Tests;
@@ -115,6 +116,67 @@ public sealed class CustomerPluginTests
         Assert.DoesNotContain("get_all_customers", functions);
     }
 
+    [Fact]
+    public void Plugin_ExposesExactlyThreeKernelFunctions()
+    {
+        var plugin = Microsoft.SemanticKernel.KernelPluginFactory.CreateFromObject(
+            new CustomerPlugin(new RecordingCustomerService()));
+
+        Assert.Equal(3, plugin.FunctionCount);
+        Assert.Equal(3, plugin.Select(function => function.Name).Distinct().Count());
+    }
+
+    [Fact]
+    public void GetCustomerByEmail_MetadataIsSpecific()
+    {
+        var function = GetFunction("get_customer_by_email");
+
+        Assert.Contains("email", function.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("name", function.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("bulk", function.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("email", function.Metadata.Parameters[0].Description, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("get_all_customers", function.Name);
+    }
+
+    [Fact]
+    public void GetCustomerById_MetadataIsSpecific()
+    {
+        var function = GetFunction("get_customer_by_id");
+
+        Assert.Contains("customer id", function.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("customer number", function.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("email", function.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("name", function.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("id", function.Metadata.Parameters[0].Description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SearchCustomersByName_MetadataIsSpecific()
+    {
+        var function = GetFunction("search_customers_by_name");
+
+        Assert.Contains("name", function.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("bulk", function.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("email", function.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("name", function.Metadata.Parameters[0].Description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Plugin_DoesNotExposeGetAllCustomers_ByName()
+    {
+        var names = Microsoft.SemanticKernel.KernelPluginFactory
+            .CreateFromObject(new CustomerPlugin(new RecordingCustomerService()))
+            .Select(function => function.Name);
+
+        Assert.DoesNotContain("get_all_customers", names);
+    }
+
+    private static Microsoft.SemanticKernel.KernelFunction GetFunction(string name)
+    {
+        return Microsoft.SemanticKernel.KernelPluginFactory.CreateFromObject(
+            new CustomerPlugin(new RecordingCustomerService()))[name];
+    }
+
     private static CustomerDto CreateCustomer(int id, string first, string last, string email)
     {
         return new CustomerDto(id, first, last, email, "555", "İstanbul", DateTime.UtcNow);
@@ -151,12 +213,94 @@ public sealed class CustomerAgentRegistrationTests
             .ToArray();
 
         Assert.Single(agent.Kernel.Plugins);
+        Assert.Equal(3, functionNames.Length);
         Assert.Contains("get_customer_by_email", functionNames);
         Assert.Contains("get_customer_by_id", functionNames);
         Assert.Contains("search_customers_by_name", functionNames);
         Assert.DoesNotContain("get_all_customers", functionNames);
         Assert.DoesNotContain("get_system_name", functionNames);
         Assert.DoesNotContain("add_numbers", functionNames);
+        Assert.Contains(
+            agent.Kernel.AutoFunctionInvocationFilters,
+            filter => filter is CustomerExactLookupTerminationFilter);
+    }
+}
+
+public sealed class CustomerLookupResponseFormatterTests
+{
+    [Fact]
+    public void FormatsSingleCustomer()
+    {
+        var customer = new CustomerAgentResult(1, "Ahmet", "Yılmaz", "ahmet.yilmaz@example.com", "İstanbul");
+
+        bool formatted = CustomerLookupResponseFormatter.TryFormatExactLookup(
+            "get_customer_by_email",
+            customer,
+            out string text);
+
+        Assert.True(formatted);
+        Assert.Equal("Müşteri: Ahmet Yılmaz (ID: 1, İstanbul).", text);
+    }
+
+    [Fact]
+    public void FormatsMissingCustomerWithoutInventingData()
+    {
+        bool formatted = CustomerLookupResponseFormatter.TryFormatExactLookup(
+            "get_customer_by_id",
+            null,
+            out string text);
+
+        Assert.True(formatted);
+        Assert.Equal("Bu bilgilerle kayıtlı müşteri bulunamadı.", text);
+    }
+
+    [Fact]
+    public void SearchByName_SingleResult_UsesFastPath()
+    {
+        IReadOnlyList<CustomerAgentResult> results =
+        [
+            new CustomerAgentResult(1, "Ahmet", "Yılmaz", "ahmet.yilmaz@example.com", "İstanbul")
+        ];
+
+        bool formatted = CustomerLookupResponseFormatter.TryFormatExactLookup(
+            "search_customers_by_name",
+            results,
+            out string text);
+
+        Assert.True(formatted);
+        Assert.Equal("Müşteri: Ahmet Yılmaz (ID: 1, İstanbul).", text);
+    }
+
+    [Fact]
+    public void SearchByName_MultipleResults_DoesNotUseFastPath()
+    {
+        IReadOnlyList<CustomerAgentResult> results =
+        [
+            new CustomerAgentResult(1, "Ahmet", "Yılmaz", "a1@example.com", "İstanbul"),
+            new CustomerAgentResult(2, "Ahmet", "Demir", "a2@example.com", "Ankara")
+        ];
+
+        bool formatted = CustomerLookupResponseFormatter.TryFormatExactLookup(
+            "search_customers_by_name",
+            results,
+            out string text);
+
+        Assert.False(formatted);
+        Assert.Equal(string.Empty, text);
+    }
+
+    [Fact]
+    public void SearchByName_ZeroResults_DoesNotUseFastPath()
+    {
+        IReadOnlyList<CustomerAgentResult> results = [];
+
+        bool formatted = CustomerLookupResponseFormatter.TryFormatExactLookup(
+            "search_customers_by_name",
+            results,
+            out string text);
+
+        Assert.False(formatted);
+        Assert.Equal(string.Empty, text);
     }
 }
 

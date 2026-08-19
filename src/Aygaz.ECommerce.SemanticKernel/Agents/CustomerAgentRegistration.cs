@@ -3,6 +3,7 @@
 using Aygaz.AgentFramework.Agents;
 using Aygaz.ECommerce.Agent.Services;
 using Aygaz.ECommerce.SemanticKernel.Plugins;
+using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Agents;
 using AgentDefinition = Aygaz.AgentFramework.Agents.AgentDefinition;
 
@@ -14,12 +15,12 @@ public static class CustomerAgentRegistration
     public const string AgentName = "CustomerAgent";
 
     public const string Instructions =
-        "You are the customer agent. Answer only customer lookup questions. " +
-        "Never invent customer data. Never mention internal function names. " +
-        "Call a function only when the user provided a specific email address, a positive customer id, or a specific person's first name, last name, or full name. " +
-        "If the user asks to list, fetch, or show customers without giving a specific person name, email, or customer id, do not call any function. " +
-        "For those unsupported bulk listing requests, reply in Turkish with: " +
-        "\"Toplu müşteri listeleme desteklenmiyor. Belirli bir müşteriyi adı, müşteri numarası veya e-posta adresiyle arayabilirsiniz.\"";
+        "Only handle customer lookup requests. Reply in Turkish. " +
+        "Use an available function when a specific email, numeric customer id/customer number, or person name is provided. " +
+        "Never invent customer data. " +
+        "Do not perform bulk customer listing. " +
+        "Do not expose internal function names. " +
+        "If the request does not identify a specific customer, ask for identifying information or explain that bulk listing is unsupported.";
 
     public static ChatCompletionAgent Register(
         IAgentRegistrar registrar,
@@ -29,7 +30,7 @@ public static class CustomerAgentRegistration
         ArgumentNullException.ThrowIfNull(registrar);
         ArgumentNullException.ThrowIfNull(customerService);
 
-        return registrar.Register(new AgentRegistration
+        ChatCompletionAgent agent = registrar.Register(new AgentRegistration
         {
             RouteKey = RouteKey,
             Definition = new AgentDefinition
@@ -39,5 +40,8 @@ public static class CustomerAgentRegistration
             },
             Plugins = [new CustomerPlugin(customerService, maxNameSearchResults)]
         });
+
+        agent.Kernel.AutoFunctionInvocationFilters.Add(new CustomerExactLookupTerminationFilter());
+        return agent;
     }
 }
