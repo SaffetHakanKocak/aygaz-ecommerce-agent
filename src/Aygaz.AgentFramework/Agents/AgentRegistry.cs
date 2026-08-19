@@ -21,6 +21,12 @@ public sealed class AgentRegistry : IAgentRegistry
         }
     }
 
+    public bool TryUnregister(string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        return _agents.TryRemove(name, out _);
+    }
+
     public ChatCompletionAgent GetAgent(string name)
     {
         if (_agents.TryGetValue(name, out var agent))

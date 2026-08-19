@@ -11,7 +11,10 @@ public sealed class AgentRouter : IAgentRouter
         ArgumentException.ThrowIfNullOrWhiteSpace(routeKey);
         ArgumentException.ThrowIfNullOrWhiteSpace(agentName);
 
-        _routes[routeKey] = agentName;
+        if (!_routes.TryAdd(routeKey, agentName))
+        {
+            throw new InvalidOperationException($"Route '{routeKey}' is already mapped.");
+        }
     }
 
     public string? ResolveAgentName(string routeKey)
