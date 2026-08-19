@@ -19,9 +19,15 @@ public sealed class SemanticKernelFactory : IKernelFactory
     {
         var builder = Microsoft.SemanticKernel.Kernel.CreateBuilder();
 
+        var httpClient = new HttpClient
+        {
+            BaseAddress = new Uri(_options.Endpoint),
+            Timeout = TimeSpan.FromMinutes(5)
+        };
+
         builder.AddOllamaChatCompletion(
             modelId: _options.ModelId,
-            endpoint: new Uri(_options.Endpoint));
+            httpClient: httpClient);
 
         return builder.Build();
     }
