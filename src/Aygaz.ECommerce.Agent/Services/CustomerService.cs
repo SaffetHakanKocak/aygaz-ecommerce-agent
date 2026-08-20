@@ -22,6 +22,7 @@ public sealed class CustomerService(ECommerceDbContext dbContext) : ICustomerSer
             customer.LastName,
             customer.Email,
             customer.Phone,
+            customer.Address,
             customer.City,
             customer.CreatedAt);
 

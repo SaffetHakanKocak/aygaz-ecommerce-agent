@@ -45,6 +45,9 @@ public sealed class ECommerceDbContext(DbContextOptions<ECommerceDbContext> opti
             customer.Property(entity => entity.Phone)
                 .HasMaxLength(30);
 
+            customer.Property(entity => entity.Address)
+                .HasMaxLength(200);
+
             customer.Property(entity => entity.City)
                 .HasMaxLength(100);
 

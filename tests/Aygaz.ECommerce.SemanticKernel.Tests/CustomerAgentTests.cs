@@ -38,6 +38,8 @@ public sealed class CustomerPluginTests
         Assert.Equal("Yılmaz", result.LastName);
         Assert.Equal("ahmet.yilmaz@example.com", result.Email);
         Assert.Equal("İstanbul", result.City);
+        Assert.Equal("0532 000 00 07", result.PhoneNumber);
+        Assert.Equal("Atatürk Mah. Örnek Sok. No: 10", result.Address);
     }
 
     [Fact]
@@ -52,8 +54,44 @@ public sealed class CustomerPluginTests
         CustomerAgentResult? result = await plugin.GetCustomerByEmailAsync("ahmet.yilmaz@example.com");
 
         Assert.NotNull(result);
+        Assert.NotNull(result.GetType().GetProperty(nameof(CustomerAgentResult.PhoneNumber)));
+        Assert.NotNull(result.GetType().GetProperty(nameof(CustomerAgentResult.Address)));
         Assert.Null(result.GetType().GetProperty("Phone"));
         Assert.Null(result.GetType().GetProperty("CreatedAt"));
+    }
+
+    [Fact]
+    public async Task GetCustomerById_CarriesPhoneAndAddress()
+    {
+        var service = new RecordingCustomerService
+        {
+            CustomerById = CreateCustomer(1, "Ahmet", "Yılmaz", "ahmet.yilmaz@example.com")
+        };
+        var plugin = new CustomerPlugin(service);
+
+        CustomerAgentResult? result = await plugin.GetCustomerByIdAsync(1);
+
+        Assert.Equal(1, service.GetByIdCallCount);
+        Assert.NotNull(result);
+        Assert.Equal("0532 000 00 01", result.PhoneNumber);
+        Assert.Equal("Atatürk Mah. Örnek Sok. No: 10", result.Address);
+    }
+
+    [Fact]
+    public async Task SearchByName_CarriesPhoneAndAddress()
+    {
+        var service = new RecordingCustomerService
+        {
+            SearchResults = [CreateCustomer(1, "Ahmet", "Yılmaz", "ahmet.yilmaz@example.com")]
+        };
+        var plugin = new CustomerPlugin(service);
+
+        IReadOnlyList<CustomerAgentResult> results =
+            await plugin.SearchCustomersByNameAsync("Ahmet Yılmaz");
+
+        CustomerAgentResult result = Assert.Single(results);
+        Assert.Equal("0532 000 00 01", result.PhoneNumber);
+        Assert.Equal("Atatürk Mah. Örnek Sok. No: 10", result.Address);
     }
 
     [Fact]
@@ -114,6 +152,8 @@ public sealed class CustomerPluginTests
         Assert.Contains("get_customer_by_id", functions);
         Assert.Contains("search_customers_by_name", functions);
         Assert.DoesNotContain("get_all_customers", functions);
+        Assert.DoesNotContain("get_customer_phone", functions);
+        Assert.DoesNotContain("get_customer_address", functions);
     }
 
     [Fact]
@@ -179,7 +219,15 @@ public sealed class CustomerPluginTests
 
     private static CustomerDto CreateCustomer(int id, string first, string last, string email)
     {
-        return new CustomerDto(id, first, last, email, "555", "İstanbul", DateTime.UtcNow);
+        return new CustomerDto(
+            id,
+            first,
+            last,
+            email,
+            $"0532 000 00 {id:00}",
+            "Atatürk Mah. Örnek Sok. No: 10",
+            "İstanbul",
+            DateTime.UtcNow);
     }
 }
 
@@ -322,6 +370,140 @@ public sealed class CustomerLookupResponseFormatterTests
 
         Assert.True(formatted);
         Assert.Equal("Müşteri: Ahmet Yılmaz (ID: 1, İstanbul).", text);
+        Assert.DoesNotContain("0532", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("@", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GeneralInfoRequest_IncludesCustomerIdAndFullName()
+    {
+        var customer = CreateSampleCustomer();
+
+        bool formatted = CustomerLookupResponseFormatter.TryFormatExactLookup(
+            "search_customers_by_name",
+            new[] { customer },
+            "Ahmet Yılmaz'ın bilgilerini getir.",
+            out string text);
+
+        Assert.True(formatted);
+        Assert.Contains("Müşteri No: 1", text, StringComparison.Ordinal);
+        Assert.Contains("Ad Soyad: Ahmet Yılmaz", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GeneralInfoRequest_IncludesEmailPhoneAddressAndCity()
+    {
+        var customer = CreateSampleCustomer();
+
+        bool formatted = CustomerLookupResponseFormatter.TryFormatExactLookup(
+            "get_customer_by_id",
+            customer,
+            "1 numaralı müşterinin bilgilerini getir.",
+            out string text);
+
+        Assert.True(formatted);
+        Assert.Contains("E-posta: ahmet.yilmaz@example.com", text, StringComparison.Ordinal);
+        Assert.Contains("Telefon: 0532 000 00 01", text, StringComparison.Ordinal);
+        Assert.Contains("Adres: Atatürk Mah. Örnek Sok. No: 10", text, StringComparison.Ordinal);
+        Assert.Contains("Şehir: İstanbul", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GeneralInfoRequest_FromEmailLookup_IncludesAllFields()
+    {
+        var customer = CreateSampleCustomer();
+
+        bool formatted = CustomerLookupResponseFormatter.TryFormatExactLookup(
+            "get_customer_by_email",
+            customer,
+            "ahmet.yilmaz@example.com müşterisinin bilgilerini göster.",
+            out string text);
+
+        Assert.True(formatted);
+        Assert.Contains("Müşteri Bilgileri", text, StringComparison.Ordinal);
+        Assert.Contains("Müşteri No: 1", text, StringComparison.Ordinal);
+        Assert.Contains("Ad Soyad: Ahmet Yılmaz", text, StringComparison.Ordinal);
+        Assert.Contains("E-posta: ahmet.yilmaz@example.com", text, StringComparison.Ordinal);
+        Assert.Contains("Telefon: 0532 000 00 01", text, StringComparison.Ordinal);
+        Assert.Contains("Adres: Atatürk Mah. Örnek Sok. No: 10", text, StringComparison.Ordinal);
+        Assert.Contains("Şehir: İstanbul", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EmailRequest_ReturnsOnlyNameAndEmail()
+    {
+        var customer = CreateSampleCustomer();
+
+        bool formatted = CustomerLookupResponseFormatter.TryFormatExactLookup(
+            "search_customers_by_name",
+            new[] { customer },
+            "Ahmet Yılmaz'ın e-postası nedir?",
+            out string text);
+
+        Assert.True(formatted);
+        Assert.Equal("Ahmet Yılmaz'ın e-postası: ahmet.yilmaz@example.com", text);
+        Assert.DoesNotContain("0532", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Atatürk", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("İstanbul", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PhoneRequest_DoesNotReturnAddressOrEmail()
+    {
+        var customer = CreateSampleCustomer();
+
+        bool formatted = CustomerLookupResponseFormatter.TryFormatExactLookup(
+            "search_customers_by_name",
+            new[] { customer },
+            "Ahmet Yılmaz'ın telefon numarası nedir?",
+            out string text);
+
+        Assert.True(formatted);
+        Assert.DoesNotContain("Atatürk", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("@", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AddressRequest_DoesNotReturnPhoneOrEmail()
+    {
+        var customer = CreateSampleCustomer();
+
+        bool formatted = CustomerLookupResponseFormatter.TryFormatExactLookup(
+            "get_customer_by_email",
+            customer,
+            "ahmet.yilmaz@example.com müşterisinin adresi nedir?",
+            out string text);
+
+        Assert.True(formatted);
+        Assert.DoesNotContain("0532", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("@", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SimpleLookup_KeepsShortSummary()
+    {
+        var customer = CreateSampleCustomer();
+
+        bool formatted = CustomerLookupResponseFormatter.TryFormatExactLookup(
+            "search_customers_by_name",
+            new[] { customer },
+            "Ahmet Yılmaz müşterisini bul.",
+            out string text);
+
+        Assert.True(formatted);
+        Assert.Equal("Müşteri: Ahmet Yılmaz (ID: 1, İstanbul).", text);
+    }
+
+    private static CustomerAgentResult CreateSampleCustomer()
+    {
+        return new CustomerAgentResult(
+            1,
+            "Ahmet",
+            "Yılmaz",
+            "ahmet.yilmaz@example.com",
+            "İstanbul",
+            "0532 000 00 01",
+            "Atatürk Mah. Örnek Sok. No: 10");
     }
 
     [Fact]

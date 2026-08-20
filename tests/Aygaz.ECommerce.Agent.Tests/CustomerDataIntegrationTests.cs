@@ -1,6 +1,7 @@
 using Aygaz.ECommerce.Agent.Data;
 using Aygaz.ECommerce.Agent.Entities;
 using Aygaz.ECommerce.Agent.Models;
+using Aygaz.ECommerce.Agent.Models.Agent;
 using Aygaz.ECommerce.Agent.Services;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -59,6 +60,40 @@ public sealed class CustomerDataIntegrationTests
             await service.GetCustomerByIdAsync(ahmet.Id));
 
         Assert.Equal(ahmet, customerById);
+        Assert.False(string.IsNullOrWhiteSpace(ahmet.Phone));
+        Assert.False(string.IsNullOrWhiteSpace(ahmet.Address));
+    }
+
+    [Fact]
+    public async Task SeededCustomers_AllHaveSyntheticPhoneAndAddress()
+    {
+        await using SqliteConnection connection = await OpenInitializedDatabaseAsync();
+        DbContextOptions<ECommerceDbContext> options = CreateOptions(connection);
+        await using var context = new ECommerceDbContext(options);
+
+        List<Customer> customers = await context.Customers
+            .AsNoTracking()
+            .OrderBy(customer => customer.Id)
+            .ToListAsync();
+
+        Assert.Equal(12, customers.Count);
+        Assert.All(customers, customer =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(customer.Phone));
+            Assert.False(string.IsNullOrWhiteSpace(customer.Address));
+            Assert.StartsWith("0532", customer.Phone);
+            Assert.Contains("Mah.", customer.Address, StringComparison.Ordinal);
+        });
+
+        Customer ahmet = Assert.Single(
+            customers,
+            customer => customer.Email == "ahmet.yilmaz@example.com");
+        Assert.Equal("0532 000 00 01", ahmet.Phone);
+        Assert.Equal("Atatürk Mah. Örnek Sok. No: 10", ahmet.Address);
+        Assert.NotNull(typeof(Customer).GetProperty(nameof(Customer.Phone)));
+        Assert.NotNull(typeof(Customer).GetProperty(nameof(Customer.Address)));
+        Assert.NotNull(typeof(CustomerAgentResult).GetProperty(nameof(CustomerAgentResult.PhoneNumber)));
+        Assert.NotNull(typeof(CustomerAgentResult).GetProperty(nameof(CustomerAgentResult.Address)));
     }
 
     [Fact]

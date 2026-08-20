@@ -6,5 +6,6 @@ public sealed record CustomerDto(
     string LastName,
     string Email,
     string? Phone,
+    string? Address,
     string? City,
     DateTime CreatedAt);

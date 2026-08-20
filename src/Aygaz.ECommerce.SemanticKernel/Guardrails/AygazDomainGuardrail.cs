@@ -24,6 +24,7 @@ public sealed class AygazDomainGuardrail : IAygazDomainGuardrail
         Allowed:
         - Aygaz müşteri, sipariş, ürün/stok, iade, teslimat, kampanya veya destek talepleri.
         - Organizasyon adı yazılmasa bile müşteri adı/id/e-posta, sipariş veya ürün/SKU araması.
+        - Müşteri telefon numarası veya adres bilgisi talepleri Allowed.
         - "siparişim nerede?" gibi Aygaz uygulaması bağlamındaki işlemler.
         - Aygaz politika/prosedür soruları.
         - Henüz bu asistanın yeteneği olmasa bile Aygaz e-ticaret operasyonu Allowed kalır.

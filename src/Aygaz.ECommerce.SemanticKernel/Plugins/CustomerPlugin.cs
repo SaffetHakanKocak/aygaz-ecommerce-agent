@@ -110,6 +110,8 @@ public sealed class CustomerPlugin
             customer.FirstName,
             customer.LastName,
             customer.Email,
-            customer.City);
+            customer.City,
+            customer.Phone,
+            customer.Address);
     }
 }

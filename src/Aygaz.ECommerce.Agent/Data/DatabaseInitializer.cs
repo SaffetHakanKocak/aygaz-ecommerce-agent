@@ -10,7 +10,9 @@ public sealed class DatabaseInitializer(ECommerceDbContext dbContext)
         try
         {
             await dbContext.Database.EnsureCreatedAsync(cancellationToken);
+            await EnsureCustomerAddressColumnAsync(cancellationToken);
             await SeedCustomersAsync(cancellationToken);
+            await ApplySyntheticCustomerContactsAsync(cancellationToken);
             await SeedOrdersAsync(cancellationToken);
             await SeedProductsAsync(cancellationToken);
             await SeedOrderItemsAsync(cancellationToken);
@@ -50,6 +52,43 @@ public sealed class DatabaseInitializer(ECommerceDbContext dbContext)
         }
 
         dbContext.Customers.AddRange(missingCustomers);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task EnsureCustomerAddressColumnAsync(CancellationToken cancellationToken)
+    {
+        await dbContext.Database.OpenConnectionAsync(cancellationToken);
+        var connection = dbContext.Database.GetDbConnection();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1 FROM pragma_table_info('Customers') WHERE name = 'Address'";
+        object? exists = await command.ExecuteScalarAsync(cancellationToken);
+        if (exists is not null)
+        {
+            return;
+        }
+
+        await dbContext.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE Customers ADD COLUMN Address TEXT",
+            cancellationToken);
+    }
+
+    private async Task ApplySyntheticCustomerContactsAsync(CancellationToken cancellationToken)
+    {
+        Dictionary<string, Customer> seeds = CreateSyntheticCustomers()
+            .ToDictionary(customer => customer.Email, StringComparer.OrdinalIgnoreCase);
+
+        List<Customer> existingCustomers = await dbContext.Customers.ToListAsync(cancellationToken);
+        foreach (Customer customer in existingCustomers)
+        {
+            if (!seeds.TryGetValue(customer.Email, out Customer? seed))
+            {
+                continue;
+            }
+
+            customer.Phone = seed.Phone;
+            customer.Address = seed.Address;
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
@@ -292,115 +331,39 @@ public sealed class DatabaseInitializer(ECommerceDbContext dbContext)
 
         return
         [
-            new Customer
-            {
-                FirstName = "Ahmet",
-                LastName = "Yılmaz",
-                Email = "ahmet.yilmaz@example.com",
-                Phone = "000-000-0001 (TEST)",
-                City = "İstanbul",
-                CreatedAt = seedDate
-            },
-            new Customer
-            {
-                FirstName = "Mehmet",
-                LastName = "Kaya",
-                Email = "mehmet.kaya@example.com",
-                Phone = null,
-                City = "Ankara",
-                CreatedAt = seedDate.AddDays(1)
-            },
-            new Customer
-            {
-                FirstName = "Ayşe",
-                LastName = "Demir",
-                Email = "ayse.demir@example.com",
-                Phone = "000-000-0003 (TEST)",
-                City = "İzmir",
-                CreatedAt = seedDate.AddDays(2)
-            },
-            new Customer
-            {
-                FirstName = "Zeynep",
-                LastName = "Aydın",
-                Email = "zeynep.aydin@example.com",
-                Phone = null,
-                City = "Kocaeli",
-                CreatedAt = seedDate.AddDays(3)
-            },
-            new Customer
-            {
-                FirstName = "Emre",
-                LastName = "Şahin",
-                Email = "emre.sahin@example.com",
-                Phone = "000-000-0005 (TEST)",
-                City = "Konya",
-                CreatedAt = seedDate.AddDays(4)
-            },
-            new Customer
-            {
-                FirstName = "Elif",
-                LastName = "Çelik",
-                Email = "elif.celik@example.com",
-                Phone = null,
-                City = "Bursa",
-                CreatedAt = seedDate.AddDays(5)
-            },
-            new Customer
-            {
-                FirstName = "Can",
-                LastName = "Koç",
-                Email = "can.koc@example.com",
-                Phone = "000-000-0007 (TEST)",
-                City = "Antalya",
-                CreatedAt = seedDate.AddDays(6)
-            },
-            new Customer
-            {
-                FirstName = "Deniz",
-                LastName = "Arslan",
-                Email = "deniz.arslan@example.com",
-                Phone = null,
-                City = "Adana",
-                CreatedAt = seedDate.AddDays(7)
-            },
-            new Customer
-            {
-                FirstName = "Selin",
-                LastName = "Güneş",
-                Email = "selin.gunes@example.com",
-                Phone = "000-000-0009 (TEST)",
-                City = "Eskişehir",
-                CreatedAt = seedDate.AddDays(8)
-            },
-            new Customer
-            {
-                FirstName = "Murat",
-                LastName = "Aksoy",
-                Email = "murat.aksoy@example.com",
-                Phone = null,
-                City = "Gaziantep",
-                CreatedAt = seedDate.AddDays(9)
-            },
-            new Customer
-            {
-                FirstName = "Ece",
-                LastName = "Öztürk",
-                Email = "ece.ozturk@example.com",
-                Phone = "000-000-0011 (TEST)",
-                City = "Samsun",
-                CreatedAt = seedDate.AddDays(10)
-            },
-            new Customer
-            {
-                FirstName = "Burak",
-                LastName = "Yıldız",
-                Email = "burak.yildiz@example.com",
-                Phone = null,
-                City = "Kayseri",
-                CreatedAt = seedDate.AddDays(11)
-            }
+            CreateSyntheticCustomer(1, "Ahmet", "Yılmaz", "ahmet.yilmaz@example.com", "İstanbul", seedDate),
+            CreateSyntheticCustomer(2, "Mehmet", "Kaya", "mehmet.kaya@example.com", "Ankara", seedDate.AddDays(1)),
+            CreateSyntheticCustomer(3, "Ayşe", "Demir", "ayse.demir@example.com", "İzmir", seedDate.AddDays(2)),
+            CreateSyntheticCustomer(4, "Zeynep", "Aydın", "zeynep.aydin@example.com", "Kocaeli", seedDate.AddDays(3)),
+            CreateSyntheticCustomer(5, "Emre", "Şahin", "emre.sahin@example.com", "Konya", seedDate.AddDays(4)),
+            CreateSyntheticCustomer(6, "Elif", "Çelik", "elif.celik@example.com", "Bursa", seedDate.AddDays(5)),
+            CreateSyntheticCustomer(7, "Can", "Koç", "can.koc@example.com", "Antalya", seedDate.AddDays(6)),
+            CreateSyntheticCustomer(8, "Deniz", "Arslan", "deniz.arslan@example.com", "Adana", seedDate.AddDays(7)),
+            CreateSyntheticCustomer(9, "Selin", "Güneş", "selin.gunes@example.com", "Eskişehir", seedDate.AddDays(8)),
+            CreateSyntheticCustomer(10, "Murat", "Aksoy", "murat.aksoy@example.com", "Gaziantep", seedDate.AddDays(9)),
+            CreateSyntheticCustomer(11, "Ece", "Öztürk", "ece.ozturk@example.com", "Samsun", seedDate.AddDays(10)),
+            CreateSyntheticCustomer(12, "Burak", "Yıldız", "burak.yildiz@example.com", "Kayseri", seedDate.AddDays(11))
         ];
+    }
+
+    private static Customer CreateSyntheticCustomer(
+        int index,
+        string firstName,
+        string lastName,
+        string email,
+        string city,
+        DateTime createdAt)
+    {
+        return new Customer
+        {
+            FirstName = firstName,
+            LastName = lastName,
+            Email = email,
+            Phone = $"0532 000 00 {index:00}",
+            Address = $"Atatürk Mah. Örnek Sok. No: {index + 9}",
+            City = city,
+            CreatedAt = createdAt
+        };
     }
 
     private static IReadOnlyList<SyntheticOrderSeed> CreateSyntheticOrders()

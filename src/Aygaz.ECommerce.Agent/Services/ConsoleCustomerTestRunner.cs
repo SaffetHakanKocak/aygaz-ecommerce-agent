@@ -177,6 +177,7 @@ public sealed class ConsoleCustomerTestRunner
         Console.WriteLine($"[{customer.Id}] {customer.FirstName} {customer.LastName}");
         Console.WriteLine($"    E-posta: {customer.Email}");
         Console.WriteLine($"    Telefon: {customer.Phone ?? "-"}");
+        Console.WriteLine($"    Adres: {customer.Address ?? "-"}");
         Console.WriteLine($"    Şehir: {customer.City ?? "-"}");
         Console.WriteLine($"    Oluşturulma: {customer.CreatedAt:yyyy-MM-dd HH:mm:ss} UTC");
     }

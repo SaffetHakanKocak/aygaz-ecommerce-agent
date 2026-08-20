@@ -5,4 +5,6 @@ public sealed record CustomerAgentResult(
     string FirstName,
     string LastName,
     string Email,
-    string? City);
+    string? City,
+    string? PhoneNumber = null,
+    string? Address = null);
