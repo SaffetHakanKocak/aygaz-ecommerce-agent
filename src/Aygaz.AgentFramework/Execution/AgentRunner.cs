@@ -9,7 +9,11 @@ namespace Aygaz.AgentFramework.Execution;
 
 public interface IAgentRunner
 {
-    Task<AgentResponse> InvokeAsync(ChatCompletionAgent agent, string userMessage, CancellationToken cancellationToken = default);
+    Task<AgentResponse> InvokeAsync(
+        ChatCompletionAgent agent,
+        string userMessage,
+        ChatHistory? conversationHistory = null,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record AgentResponse(
@@ -20,16 +24,24 @@ public sealed record AgentResponse(
 
 public sealed class SemanticKernelAgentRunner : IAgentRunner
 {
-    public async Task<AgentResponse> InvokeAsync(ChatCompletionAgent agent, string userMessage, CancellationToken cancellationToken = default)
+    public async Task<AgentResponse> InvokeAsync(
+        ChatCompletionAgent agent,
+        string userMessage,
+        ChatHistory? conversationHistory = null,
+        CancellationToken cancellationToken = default)
     {
         var sw = Stopwatch.StartNew();
-
-        var message = new ChatMessageContent(AuthorRole.User, userMessage);
+        var history = CloneHistory(conversationHistory);
+        history.AddUserMessage(userMessage);
         string result = string.Empty;
         int? inputTokens = null;
         int? outputTokens = null;
 
-        await foreach (ChatMessageContent response in agent.InvokeAsync(message, cancellationToken: cancellationToken))
+        await foreach (ChatMessageContent response in agent.InvokeAsync(
+                           (ICollection<ChatMessageContent>)history,
+                           null,
+                           null,
+                           cancellationToken))
         {
             AccumulateUsage(response, ref inputTokens, ref outputTokens);
 
@@ -56,6 +68,22 @@ public sealed class SemanticKernelAgentRunner : IAgentRunner
             sw.Elapsed,
             inputTokens,
             outputTokens);
+    }
+
+    private static ChatHistory CloneHistory(ChatHistory? source)
+    {
+        var history = new ChatHistory();
+        if (source is null)
+        {
+            return history;
+        }
+
+        foreach (ChatMessageContent message in source)
+        {
+            history.Add(message);
+        }
+
+        return history;
     }
 
     private static void AccumulateUsage(ChatMessageContent response, ref int? inputTokens, ref int? outputTokens)

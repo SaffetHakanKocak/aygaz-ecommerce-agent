@@ -1,7 +1,7 @@
 namespace Aygaz.ECommerce.SemanticKernel.Guardrails;
 
 public sealed record DomainGuardedQueryResult(
-    AygazDomainGuardrailResult Guardrail,
+    AygazDomainClassificationResult Guardrail,
     string Content,
     bool BusinessAgentInvoked,
     bool BusinessFunctionInvoked,

@@ -135,7 +135,34 @@ public sealed class CustomerPluginTests
         Assert.Equal(0, service.SearchByNameCallCount);
         Assert.Equal(0, service.GetByEmailCallCount);
         Assert.Equal(0, service.GetByIdCallCount);
+        Assert.Equal(0, service.SearchByCityCallCount);
         Assert.Equal(0, service.GetAllCallCount);
+    }
+
+    [Fact]
+    public async Task SearchByCity_AppliesMaxResultLimit()
+    {
+        var service = new RecordingCustomerService
+        {
+            CitySearchResults =
+            [
+                CreateCustomer(1, "Ahmet", "Yılmaz", "a1@example.com"),
+                CreateCustomer(2, "Ayşe", "Demir", "a2@example.com"),
+                CreateCustomer(3, "Mehmet", "Kaya", "a3@example.com"),
+                CreateCustomer(4, "Elif", "Koç", "a4@example.com"),
+                CreateCustomer(5, "Mert", "Can", "a5@example.com"),
+                CreateCustomer(6, "Zeynep", "Aslan", "a6@example.com")
+            ]
+        };
+        var plugin = new CustomerPlugin(service);
+
+        IReadOnlyList<CustomerAgentResult> results =
+            await plugin.SearchCustomersByCityAsync("İstanbul");
+
+        Assert.Equal(1, service.SearchByCityCallCount);
+        Assert.Equal("İstanbul", service.LastCitySearchTerm);
+        Assert.Equal(5, results.Count);
+        Assert.Equal(1, results[0].Id);
     }
 
     [Fact]
@@ -147,23 +174,24 @@ public sealed class CustomerPluginTests
             .Select(function => function.Name)
             .ToArray();
 
-        Assert.Equal(3, functions.Length);
+        Assert.Equal(4, functions.Length);
         Assert.Contains("get_customer_by_email", functions);
         Assert.Contains("get_customer_by_id", functions);
         Assert.Contains("search_customers_by_name", functions);
+        Assert.Contains("search_customers_by_city", functions);
         Assert.DoesNotContain("get_all_customers", functions);
         Assert.DoesNotContain("get_customer_phone", functions);
         Assert.DoesNotContain("get_customer_address", functions);
     }
 
     [Fact]
-    public void Plugin_ExposesExactlyThreeKernelFunctions()
+    public void Plugin_ExposesExactlyFourKernelFunctions()
     {
         var plugin = Microsoft.SemanticKernel.KernelPluginFactory.CreateFromObject(
             new CustomerPlugin(new RecordingCustomerService()));
 
-        Assert.Equal(3, plugin.FunctionCount);
-        Assert.Equal(3, plugin.Select(function => function.Name).Distinct().Count());
+        Assert.Equal(4, plugin.FunctionCount);
+        Assert.Equal(4, plugin.Select(function => function.Name).Distinct().Count());
     }
 
     [Fact]
@@ -261,10 +289,11 @@ public sealed class CustomerAgentRegistrationTests
             .ToArray();
 
         Assert.Single(agent.Kernel.Plugins);
-        Assert.Equal(3, functionNames.Length);
+        Assert.Equal(4, functionNames.Length);
         Assert.Contains("get_customer_by_email", functionNames);
         Assert.Contains("get_customer_by_id", functionNames);
         Assert.Contains("search_customers_by_name", functionNames);
+        Assert.Contains("search_customers_by_city", functionNames);
         Assert.DoesNotContain("get_all_customers", functionNames);
         Assert.DoesNotContain("get_system_name", functionNames);
         Assert.DoesNotContain("add_numbers", functionNames);
@@ -302,7 +331,7 @@ public sealed class CustomerAgentRegistrationTests
                 .ToArray();
 
             Assert.Equal(
-                ["get_customer_by_email", "get_customer_by_id", "search_customers_by_name"],
+                ["get_customer_by_email", "get_customer_by_id", "search_customers_by_city", "search_customers_by_name"],
                 functionNames);
             Assert.Contains(
                 agent.Kernel.AutoFunctionInvocationFilters,
@@ -343,7 +372,7 @@ public sealed class CustomerAgentRegistrationTests
                 .ToArray();
 
             Assert.Equal(
-                ["get_customer_by_email", "get_customer_by_id", "search_customers_by_name"],
+                ["get_customer_by_email", "get_customer_by_id", "search_customers_by_city", "search_customers_by_name"],
                 functionNames);
             Assert.Contains(
                 agent.Kernel.AutoFunctionInvocationFilters,
@@ -479,6 +508,48 @@ public sealed class CustomerLookupResponseFormatterTests
         Assert.DoesNotContain("@", text, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("1 numaralı müşteri nerede yaşıyor?")]
+    [InlineData("Ahmet Yılmaz nerede oturuyor?")]
+    [InlineData("ikamet adresi nedir?")]
+    [InlineData("ikametgahı neresi?")]
+    public void NaturalAddressIntent_FormatsAddress(string userMessage)
+    {
+        var customer = CreateSampleCustomer();
+
+        bool formatted = CustomerLookupResponseFormatter.TryFormatExactLookup(
+            "get_customer_by_id",
+            customer,
+            userMessage,
+            out string text);
+
+        Assert.True(formatted);
+        Assert.Contains("adresi", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void CitySearch_FastPath_MinimizesDetails()
+    {
+        IReadOnlyList<CustomerAgentResult> matches =
+        [
+            new(1, "Ahmet", "Yılmaz", "a1@example.com", "İstanbul", "0532 000 00 01", "Adres 1"),
+            new(2, "Ayşe", "Demir", "a2@example.com", "İstanbul", "0532 000 00 02", "Adres 2")
+        ];
+
+        bool formatted = CustomerLookupResponseFormatter.TryFormatExactLookup(
+            "search_customers_by_city",
+            matches,
+            "İstanbul'da yaşayan müşteriler kim?",
+            out string text);
+
+        Assert.True(formatted);
+        Assert.Contains("İstanbul", text, StringComparison.Ordinal);
+        Assert.Contains("Müşteri No: 1", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("0532 000 00 01", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("a1@example.com", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Adres 1", text, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void SimpleLookup_KeepsShortSummary()
     {
@@ -573,15 +644,18 @@ internal sealed class RecordingCustomerService : ICustomerService
     public CustomerDto? CustomerByEmail { get; init; }
     public CustomerDto? CustomerById { get; init; }
     public IReadOnlyList<CustomerDto> SearchResults { get; init; } = [];
+    public IReadOnlyList<CustomerDto> CitySearchResults { get; init; } = [];
 
     public int GetByEmailCallCount { get; private set; }
     public int GetByIdCallCount { get; private set; }
     public int SearchByNameCallCount { get; private set; }
+    public int SearchByCityCallCount { get; private set; }
     public int GetAllCallCount { get; private set; }
 
     public string? LastEmail { get; private set; }
     public int LastId { get; private set; }
     public string? LastSearchTerm { get; private set; }
+    public string? LastCitySearchTerm { get; private set; }
 
     public Task<CustomerDto?> GetCustomerByIdAsync(int id, CancellationToken cancellationToken = default)
     {
@@ -604,6 +678,15 @@ internal sealed class RecordingCustomerService : ICustomerService
         SearchByNameCallCount++;
         LastSearchTerm = searchTerm;
         return Task.FromResult(SearchResults);
+    }
+
+    public Task<IReadOnlyList<CustomerDto>> SearchCustomersByCityAsync(
+        string city,
+        CancellationToken cancellationToken = default)
+    {
+        SearchByCityCallCount++;
+        LastCitySearchTerm = city;
+        return Task.FromResult(CitySearchResults);
     }
 
     public Task<IReadOnlyList<CustomerDto>> GetAllCustomersAsync(CancellationToken cancellationToken = default)

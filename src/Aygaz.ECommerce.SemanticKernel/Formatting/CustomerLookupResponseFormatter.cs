@@ -10,6 +10,7 @@ public enum CustomerLookupDetail
     Phone,
     Address,
     Email,
+    City,
     Full
 }
 
@@ -56,6 +57,13 @@ public static class CustomerLookupResponseFormatter
             return true;
         }
 
+        if (functionName == "search_customers_by_city"
+            && value is IEnumerable<CustomerAgentResult> cityMatches)
+        {
+            text = FormatCityMatches(cityMatches, userMessage);
+            return true;
+        }
+
         return false;
     }
 
@@ -70,20 +78,26 @@ public static class CustomerLookupResponseFormatter
         bool phone = ContainsPhoneIntent(normalized);
         bool address = ContainsAddressIntent(normalized);
         bool email = ContainsEmailIntent(normalized);
+        bool city = ContainsCityIntent(normalized);
 
-        if (phone && !address && !email)
+        if (phone && !address && !email && !city)
         {
             return CustomerLookupDetail.Phone;
         }
 
-        if (address && !phone && !email)
+        if (address && !phone && !email && !city)
         {
             return CustomerLookupDetail.Address;
         }
 
-        if (email && !phone && !address)
+        if (email && !phone && !address && !city)
         {
             return CustomerLookupDetail.Email;
+        }
+
+        if (city && !phone && !address && !email)
+        {
+            return CustomerLookupDetail.City;
         }
 
         if (ContainsFullInfoIntent(normalized))
@@ -103,6 +117,14 @@ public static class CustomerLookupResponseFormatter
     private static bool ContainsAddressIntent(string normalized)
     {
         return normalized.Contains("adres", StringComparison.Ordinal)
+            || normalized.Contains("adres bilgisi", StringComparison.Ordinal)
+            || normalized.Contains("nerede yaşıyor", StringComparison.Ordinal)
+            || normalized.Contains("nerede yasiyor", StringComparison.Ordinal)
+            || normalized.Contains("nerede yaşıyordu", StringComparison.Ordinal)
+            || normalized.Contains("nerede yasiyordu", StringComparison.Ordinal)
+            || normalized.Contains("nerede oturuyor", StringComparison.Ordinal)
+            || normalized.Contains("ikamet adresi", StringComparison.Ordinal)
+            || normalized.Contains("ikametgah", StringComparison.Ordinal)
             || normalized.Contains("address", StringComparison.Ordinal);
     }
 
@@ -111,6 +133,16 @@ public static class CustomerLookupResponseFormatter
         return normalized.Contains("e-posta", StringComparison.Ordinal)
             || normalized.Contains("eposta", StringComparison.Ordinal)
             || normalized.Contains("email", StringComparison.Ordinal);
+    }
+
+    private static bool ContainsCityIntent(string normalized)
+    {
+        return normalized.Contains("hangi şehir", StringComparison.Ordinal)
+            || normalized.Contains("hangi sehir", StringComparison.Ordinal)
+            || normalized.Contains("şehirdeydi", StringComparison.Ordinal)
+            || normalized.Contains("sehirdeydi", StringComparison.Ordinal)
+            || normalized.Contains("şehri neydi", StringComparison.Ordinal)
+            || normalized.Contains("sehri neydi", StringComparison.Ordinal);
     }
 
     private static bool ContainsFullInfoIntent(string normalized)
@@ -161,6 +193,8 @@ public static class CustomerLookupResponseFormatter
                 + (string.IsNullOrWhiteSpace(customer.City) ? string.Empty : $", {customer.City}"),
             CustomerLookupDetail.Email =>
                 $"{name}'ın e-postası: {ValueOrUnknown(customer.Email)}",
+            CustomerLookupDetail.City =>
+                $"{name}'ın şehri: {ValueOrUnknown(customer.City)}",
             CustomerLookupDetail.Full => FormatFullSummary(customer),
             _ => FormatSummary(customer)
         };
@@ -188,5 +222,58 @@ public static class CustomerLookupResponseFormatter
     private static string ValueOrUnknown(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? "kayıtlı değil" : value;
+    }
+
+    private static string FormatCityMatches(IEnumerable<CustomerAgentResult> matches, string? userMessage)
+    {
+        CustomerAgentResult[] list = matches.Take(5).ToArray();
+        string city = ExtractCity(userMessage) ?? "Bu şehir";
+        if (list.Length == 0)
+        {
+            return $"{city} için müşteri bulunamadı.";
+        }
+
+        var builder = new StringBuilder();
+        builder.AppendLine($"{city}'da bulunan müşteriler:");
+        foreach (CustomerAgentResult customer in list)
+        {
+            builder.AppendLine($"- {customer.FirstName} {customer.LastName} — Müşteri No: {customer.Id}");
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    private static string? ExtractCity(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return null;
+        }
+
+        string normalized = message.Trim();
+        string[] separators = ["'da", "'de", "da ", "de ", "daki", "deki", "için", "icin"];
+        foreach (string separator in separators)
+        {
+            int index = normalized.IndexOf(separator, StringComparison.OrdinalIgnoreCase);
+            if (index <= 0)
+            {
+                continue;
+            }
+
+            string candidate = normalized[..index].Trim();
+            string[] tokens = candidate.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (tokens.Length == 0)
+            {
+                continue;
+            }
+
+            string city = tokens[^1].Trim('\'', '"', '.', ',', '?', '!');
+            if (city.Length >= 2 && city.All(char.IsLetter))
+            {
+                return city;
+            }
+        }
+
+        return null;
     }
 }

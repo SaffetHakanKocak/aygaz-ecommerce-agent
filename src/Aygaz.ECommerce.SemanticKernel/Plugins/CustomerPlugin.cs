@@ -71,6 +71,28 @@ public sealed class CustomerPlugin
             .ToArray();
     }
 
+    [KernelFunction("search_customers_by_city")]
+    [Description("Use only for city-based customer lookup requests such as 'İstanbul'daki müşteriler'. Do not use for bulk-all customer listing.")]
+    public async Task<IReadOnlyList<CustomerAgentResult>> SearchCustomersByCityAsync(
+        [Description("City name such as İstanbul or Ankara.")] string city,
+        CancellationToken cancellationToken = default)
+    {
+        string trimmedCity = city?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(trimmedCity))
+        {
+            return [];
+        }
+
+        IReadOnlyList<CustomerDto> customers = await _customerService.SearchCustomersByCityAsync(
+            trimmedCity,
+            cancellationToken);
+
+        return customers
+            .Take(5)
+            .Select(ToResult)
+            .ToArray();
+    }
+
     private static bool LooksLikePersonNameQuery(string query)
     {
         if (string.IsNullOrWhiteSpace(query))

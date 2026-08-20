@@ -50,8 +50,9 @@ public sealed class DomainGuardedQueryExecutor
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userMessage);
 
-        AygazDomainGuardrailResult guardrail = await _guardrail.EvaluateAsync(
+        AygazDomainClassificationResult guardrail = await _guardrail.EvaluateAsync(
             userMessage,
+            conversationHistory: null,
             cancellationToken);
 
         if (guardrail.Decision == DomainDecision.OutOfScope)
@@ -74,6 +75,7 @@ public sealed class DomainGuardedQueryExecutor
         AgentResponse response = await _runner.InvokeAsync(
             _registry.GetAgent(agentName),
             userMessage.Trim(),
+            conversationHistory: null,
             cancellationToken);
 
         return new DomainGuardedQueryResult(
@@ -85,7 +87,7 @@ public sealed class DomainGuardedQueryExecutor
     }
 
     private static DomainGuardedQueryResult Blocked(
-        AygazDomainGuardrailResult guardrail,
+        AygazDomainClassificationResult guardrail,
         string content)
     {
         return new DomainGuardedQueryResult(

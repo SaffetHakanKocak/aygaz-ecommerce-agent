@@ -89,6 +89,29 @@ public sealed class CustomerService(ECommerceDbContext dbContext) : ICustomerSer
             .ToList();
     }
 
+    public async Task<IReadOnlyList<CustomerDto>> SearchCustomersByCityAsync(
+        string city,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(city))
+        {
+            return Array.Empty<CustomerDto>();
+        }
+
+        string normalizedCity = city.Trim();
+        List<CustomerDto> customers = await dbContext.Customers
+            .AsNoTracking()
+            .OrderBy(customer => customer.Id)
+            .Select(ToDto)
+            .ToListAsync(cancellationToken);
+
+        return customers
+            .Where(customer =>
+                !string.IsNullOrWhiteSpace(customer.City)
+                && TurkishCompareInfo.IndexOf(customer.City, normalizedCity, NameSearchOptions) >= 0)
+            .ToList();
+    }
+
     public async Task<IReadOnlyList<CustomerDto>> GetAllCustomersAsync(
         CancellationToken cancellationToken = default)
     {

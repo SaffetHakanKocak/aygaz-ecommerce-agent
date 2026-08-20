@@ -403,6 +403,13 @@ public sealed class CustomerToolExecutorTests
             return Task.FromResult(NameSearchResult);
         }
 
+        public Task<IReadOnlyList<CustomerDto>> SearchCustomersByCityAsync(
+            string city,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<CustomerDto>>([]);
+        }
+
         public Task<IReadOnlyList<CustomerDto>> GetAllCustomersAsync(
             CancellationToken cancellationToken = default)
         {

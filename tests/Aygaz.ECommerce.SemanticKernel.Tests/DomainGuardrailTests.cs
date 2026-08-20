@@ -7,6 +7,7 @@ using Aygaz.AgentFramework.Kernel;
 using Aygaz.AgentFramework.Observability;
 using Aygaz.AgentFramework.Routing;
 using Aygaz.ECommerce.SemanticKernel.Agents;
+using Aygaz.ECommerce.SemanticKernel.Capabilities;
 using Aygaz.ECommerce.SemanticKernel.Guardrails;
 using Aygaz.ECommerce.SemanticKernel.Plugins;
 using Microsoft.SemanticKernel;
@@ -157,7 +158,7 @@ public sealed class DomainGuardrailTests
             .ToArray();
 
         Assert.Equal(
-            ["get_customer_by_email", "get_customer_by_id", "search_customers_by_name"],
+            ["get_customer_by_email", "get_customer_by_id", "search_customers_by_city", "search_customers_by_name"],
             functionNames);
         Assert.DoesNotContain(
             functionNames,
@@ -173,14 +174,37 @@ public sealed class DomainGuardrailTests
     [InlineData("Allowed", DomainDecision.Allowed)]
     public void Parser_ReadsClassifierDecision(string content, DomainDecision expected)
     {
-        Assert.True(DomainDecisionParser.TryParse(content, out DomainDecision decision));
+        Assert.True(DomainDecisionParser.TryParse(
+            content,
+            out DomainDecision decision,
+            out AygazCapability capability,
+            out _));
         Assert.Equal(expected, decision);
+        Assert.Equal(AygazCapability.Unknown, capability);
     }
 
     [Fact]
     public void Parser_UnknownContent_FailsClosed()
     {
-        Assert.False(DomainDecisionParser.TryParse("not-a-decision", out _));
+        Assert.False(DomainDecisionParser.TryParse("not-a-decision", out _, out _, out _));
+    }
+
+    [Fact]
+    public void Parser_ReadsDecisionAndCapability()
+    {
+        const string content =
+            """{"decision":"Allowed","capability":"Sales","reason":"aygaz_revenue_question"}""";
+
+        bool parsed = DomainDecisionParser.TryParse(
+            content,
+            out DomainDecision decision,
+            out AygazCapability capability,
+            out string? reason);
+
+        Assert.True(parsed);
+        Assert.Equal(DomainDecision.Allowed, decision);
+        Assert.Equal(AygazCapability.Sales, capability);
+        Assert.Equal("aygaz_revenue_question", reason);
     }
 
     private static Harness CreateHarness(DomainDecision decision)
@@ -219,11 +243,17 @@ public sealed class DomainGuardrailTests
             _decision = decision;
         }
 
-        public Task<AygazDomainGuardrailResult> EvaluateAsync(
+        public Task<AygazDomainClassificationResult> EvaluateAsync(
             string? userMessage,
+            Microsoft.SemanticKernel.ChatCompletion.ChatHistory? conversationHistory = null,
             CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(new AygazDomainGuardrailResult(_decision, TimeSpan.Zero, 0));
+            return Task.FromResult(new AygazDomainClassificationResult(
+                _decision,
+                AygazCapability.Unknown,
+                null,
+                TimeSpan.Zero,
+                0));
         }
     }
 
@@ -256,6 +286,7 @@ public sealed class DomainGuardrailTests
         public Task<AgentResponse> InvokeAsync(
             ChatCompletionAgent agent,
             string userMessage,
+            Microsoft.SemanticKernel.ChatCompletion.ChatHistory? conversationHistory = null,
             CancellationToken cancellationToken = default)
         {
             InvokeCount++;
@@ -270,6 +301,7 @@ public sealed class DomainGuardrailTests
         public Task<AgentResponse> InvokeAsync(
             ChatCompletionAgent agent,
             string userMessage,
+            Microsoft.SemanticKernel.ChatCompletion.ChatHistory? conversationHistory = null,
             CancellationToken cancellationToken = default)
         {
             InvokeCount++;
