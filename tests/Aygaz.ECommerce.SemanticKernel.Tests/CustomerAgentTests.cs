@@ -224,6 +224,88 @@ public sealed class CustomerAgentRegistrationTests
             agent.Kernel.AutoFunctionInvocationFilters,
             filter => filter is CustomerExactLookupTerminationFilter);
     }
+
+    [Fact]
+    public void Register_WithOpenAIProvider_KeepsTheSameCustomerFunctions()
+    {
+        string? previous = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+        Environment.SetEnvironmentVariable("OPENAI_API_KEY", "sk-test-not-a-real-key");
+        try
+        {
+            var options = new SemanticKernelOptions
+            {
+                Provider = SemanticKernelProvider.OpenAI,
+                ModelId = "gpt-4.1"
+            };
+            var registry = new AgentRegistry();
+            var router = new AgentRouter();
+            var registrar = new SemanticKernelAgentRegistrar(
+                new SemanticKernelFactory(options),
+                new SemanticKernelAgentFactory(options),
+                registry,
+                router);
+
+            var agent = CustomerAgentRegistration.Register(registrar, new RecordingCustomerService());
+
+            var functionNames = agent.Kernel.Plugins
+                .SelectMany(plugin => plugin)
+                .Select(function => function.Name)
+                .OrderBy(name => name)
+                .ToArray();
+
+            Assert.Equal(
+                ["get_customer_by_email", "get_customer_by_id", "search_customers_by_name"],
+                functionNames);
+            Assert.Contains(
+                agent.Kernel.AutoFunctionInvocationFilters,
+                filter => filter is CustomerExactLookupTerminationFilter);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENAI_API_KEY", previous);
+        }
+    }
+
+    [Fact]
+    public void Register_WithGroqProvider_KeepsTheSameCustomerFunctions()
+    {
+        string? previous = Environment.GetEnvironmentVariable("GROQ_API_KEY");
+        Environment.SetEnvironmentVariable("GROQ_API_KEY", "gsk_test-not-a-real-key");
+        try
+        {
+            var options = new SemanticKernelOptions
+            {
+                Provider = SemanticKernelProvider.Groq,
+                ModelId = "openai/gpt-oss-120b"
+            };
+            var registry = new AgentRegistry();
+            var router = new AgentRouter();
+            var registrar = new SemanticKernelAgentRegistrar(
+                new SemanticKernelFactory(options),
+                new SemanticKernelAgentFactory(options),
+                registry,
+                router);
+
+            var agent = CustomerAgentRegistration.Register(registrar, new RecordingCustomerService());
+
+            var functionNames = agent.Kernel.Plugins
+                .SelectMany(plugin => plugin)
+                .Select(function => function.Name)
+                .OrderBy(name => name)
+                .ToArray();
+
+            Assert.Equal(
+                ["get_customer_by_email", "get_customer_by_id", "search_customers_by_name"],
+                functionNames);
+            Assert.Contains(
+                agent.Kernel.AutoFunctionInvocationFilters,
+                filter => filter is CustomerExactLookupTerminationFilter);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("GROQ_API_KEY", previous);
+        }
+    }
 }
 
 public sealed class CustomerLookupResponseFormatterTests
