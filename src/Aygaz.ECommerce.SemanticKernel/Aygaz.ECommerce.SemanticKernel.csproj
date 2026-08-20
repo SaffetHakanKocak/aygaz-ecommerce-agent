@@ -7,6 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Aygaz.ECommerce.SemanticKernel.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Aygaz.AgentFramework\Aygaz.AgentFramework.csproj" />
     <ProjectReference Include="..\Aygaz.ECommerce.Agent\Aygaz.ECommerce.Agent.csproj" />
   </ItemGroup>

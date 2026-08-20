@@ -13,6 +13,7 @@ using Aygaz.ECommerce.Agent.Configuration;
 using Aygaz.ECommerce.Agent.Data;
 using Aygaz.ECommerce.Agent.Services;
 using Aygaz.ECommerce.SemanticKernel.Agents;
+using Aygaz.ECommerce.SemanticKernel.Guardrails;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -74,6 +75,13 @@ internal static class Program
             endpoint = SemanticKernelFactory.DefaultGroqEndpoint;
         }
 
+        if (provider == SemanticKernelProvider.Ollama
+            && (string.IsNullOrWhiteSpace(modelId)
+                || modelId.Equals("openai/gpt-oss-120b", StringComparison.OrdinalIgnoreCase)))
+        {
+            modelId = "qwen3:1.7b";
+        }
+
         if (provider == SemanticKernelProvider.Groq
             && (string.IsNullOrWhiteSpace(modelId) || modelId.Equals("qwen3:1.7b", StringComparison.OrdinalIgnoreCase)))
         {
@@ -101,6 +109,13 @@ internal static class Program
             [telemetryFilter],
             [telemetryFilter]);
         IAgentRunner runner = new SemanticKernelAgentRunner();
+        var guardrail = new AygazDomainGuardrail(kernelFactory.CreateKernel(), options);
+        var executor = new DomainGuardedQueryExecutor(
+            guardrail,
+            router,
+            registry,
+            runner,
+            telemetry);
 
         await using AsyncServiceScope scope = host.Services.CreateAsyncScope();
         var customerService = scope.ServiceProvider.GetRequiredService<ICustomerService>();
@@ -124,31 +139,27 @@ internal static class Program
                 || input == "0")
                 break;
 
-            string? agentName = router.ResolveAgentName(CustomerAgentRegistration.RouteKey);
-            if (agentName is null)
-            {
-                Console.WriteLine("  Route bulunamadı.");
-                continue;
-            }
-
-            var agent = registry.GetAgent(agentName);
-            Console.WriteLine($"  Route: {CustomerAgentRegistration.RouteKey} → Agent: {agent.Name}");
-
             try
             {
-                telemetry.Reset();
-                var response = await runner.InvokeAsync(agent, input);
+                DomainGuardedQueryResult result = await executor.ExecuteAsync(input);
                 Console.WriteLine();
-                Console.WriteLine(response.Content);
-                Console.WriteLine($"  function: {telemetry.LastFunctionName ?? "(none)"}");
-                Console.WriteLine($"  function invocation count: {telemetry.FunctionInvocationCount}");
-                Console.WriteLine($"  LLM inference count: {telemetry.EstimateLlmInferenceCount()}");
-                Console.WriteLine($"  fast path: {(telemetry.Terminated ? "yes" : "no")}");
-                if (response.InputTokens is not null || response.OutputTokens is not null)
+                Console.WriteLine(result.Content);
+                Console.WriteLine($"  guardrail: {result.Guardrail.Decision}");
+                Console.WriteLine($"  guardrail latency: {result.Guardrail.Latency.TotalSeconds:F2}s");
+                Console.WriteLine($"  guardrail inference count: {result.Guardrail.InferenceCount}");
+                Console.WriteLine($"  business agent invoked: {(result.BusinessAgentInvoked ? "yes" : "no")}");
+                Console.WriteLine($"  business function invoked: {(result.BusinessFunctionInvoked ? "yes" : "no")}");
+                if (result.BusinessAgentInvoked)
                 {
-                    Console.WriteLine($"  tokens in/out: {response.InputTokens?.ToString() ?? "-"}/{response.OutputTokens?.ToString() ?? "-"}");
+                    Console.WriteLine($"  function: {telemetry.LastFunctionName ?? "(none)"}");
+                    Console.WriteLine($"  function invocation count: {telemetry.FunctionInvocationCount}");
+                    Console.WriteLine($"  LLM inference count: {telemetry.EstimateLlmInferenceCount()}");
+                    Console.WriteLine($"  fast path: {(telemetry.Terminated ? "yes" : "no")}");
+                    Console.WriteLine($"  agent latency: {result.AgentDuration?.TotalSeconds:F2}s");
+                    Console.WriteLine(
+                        $"  total latency: {(result.Guardrail.Latency + (result.AgentDuration ?? TimeSpan.Zero)).TotalSeconds:F2}s");
                 }
-                Console.WriteLine($"  [{response.Duration.TotalSeconds:F1}s]");
+
                 Console.WriteLine();
             }
             catch (Exception ex)

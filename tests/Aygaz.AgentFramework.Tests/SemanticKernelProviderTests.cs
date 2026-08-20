@@ -170,6 +170,9 @@ public sealed class SemanticKernelProviderTests
 
         Assert.DoesNotContain(names, name => name.Contains("Customer", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(names, name => name.Contains("Order", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(names, name => name.Contains("Guardrail", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(names, name => name.Contains("AygazDomain", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(names, name => name.Contains("OutOfScope", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
