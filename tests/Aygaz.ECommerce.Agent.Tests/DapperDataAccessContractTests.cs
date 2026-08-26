@@ -38,7 +38,10 @@ public sealed class DapperDataAccessContractTests
         OrderDetailDto? detail = await access.GetCustomerOrderDetailAsync(order.Id);
         Assert.NotNull(detail);
         Assert.Single(detail.Items);
-        Assert.Equal(20m, (await access.GetSalesSummaryAsync(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31))).TotalRevenue);
+        OrderDto? latestOrder = await access.GetLatestCustomerOrderAsync(customer.Id);
+        Assert.NotNull(latestOrder);
+        Assert.Equal("ORD-002", latestOrder.OrderNumber);
+        Assert.Equal(30m, (await access.GetSalesSummaryAsync(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31))).TotalRevenue);
     }
 
     private static async Task SeedAsync(DbConnection connection)
@@ -47,7 +50,9 @@ public sealed class DapperDataAccessContractTests
             INSERT INTO Customers (Id, FirstName, LastName, Email, CreatedAt) VALUES (1, 'Ahmet', 'Yilmaz', 'ahmet@example.com', '2026-01-01');
             INSERT INTO Products (Id, Sku, Name, Category, UnitPrice, IsActive, CreatedAt) VALUES (10, 'AYG-001', 'Water', 'Water', 10, 1, '2026-01-01');
             INSERT INTO CustomerOrders (Id, OrderNumber, CustomerId, OrderDate, Status, TotalAmount) VALUES (20, 'ORD-001', 1, '2026-01-02', 'Delivered', 20);
+            INSERT INTO CustomerOrders (Id, OrderNumber, CustomerId, OrderDate, Status, TotalAmount) VALUES (21, 'ORD-002', 1, '2026-01-03', 'Delivered', 10);
             INSERT INTO OrderItems (Id, CustomerOrderId, ProductId, Quantity, UnitPrice) VALUES (30, 20, 10, 2, 10);
+            INSERT INTO OrderItems (Id, CustomerOrderId, ProductId, Quantity, UnitPrice) VALUES (31, 21, 10, 1, 10);
             INSERT INTO InventoryRecords (Id, ProductId, LocationCode, LocationName, QuantityAvailable, ReorderLevel, UpdatedAt) VALUES (40, 10, 'IST', 'Istanbul', 2, 1, '2026-01-01');
             """;
         await connection.ExecuteNonQueryAsync(sql);

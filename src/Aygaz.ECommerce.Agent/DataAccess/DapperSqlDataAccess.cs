@@ -92,8 +92,20 @@ public sealed class DapperSqlDataAccess : IECommerceDataAccess
         return QueryAsync<OrderDto>($"{OrderSelect($"WHERE CustomerId = @CustomerId ORDER BY OrderDate DESC, Id DESC {limit}", take)}", new { CustomerId = customerId, MaxResults = maxResults }, cancellationToken);
     }
 
-    public async Task<OrderDto?> GetLatestCustomerOrderAsync(int customerId, CancellationToken cancellationToken = default) =>
-        customerId <= 0 ? null : await QuerySingleOrDefaultAsync<OrderDto>(OrderSelect("WHERE CustomerId = @CustomerId ORDER BY OrderDate DESC, Id DESC", ""), new { CustomerId = customerId }, cancellationToken);
+    public async Task<OrderDto?> GetLatestCustomerOrderAsync(int customerId, CancellationToken cancellationToken = default)
+    {
+        if (customerId <= 0)
+        {
+            return null;
+        }
+
+        string take = provider == RelationalDatabaseProvider.SqlServer ? "TOP (1)" : "";
+        string limit = provider == RelationalDatabaseProvider.Sqlite ? "LIMIT 1" : "";
+        return await QuerySingleOrDefaultAsync<OrderDto>(
+            OrderSelect($"WHERE CustomerId = @CustomerId ORDER BY OrderDate DESC, Id DESC {limit}", take),
+            new { CustomerId = customerId },
+            cancellationToken);
+    }
 
     public async Task<OrderDetailDto?> GetCustomerOrderDetailAsync(int orderId, CancellationToken cancellationToken = default)
     {

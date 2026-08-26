@@ -38,6 +38,20 @@ public sealed class DataAccessProviderTests
     }
 
     [Fact]
+    public void DependencyInjection_SelectsDapperForSqlServer()
+    {
+        using ServiceProvider provider = CreateProvider(new Dictionary<string, string?>
+        {
+            ["DataAccess:Provider"] = "SqlServer",
+            ["DataAccess:SqlServer:ConnectionString"] = "Server=localhost;Database=aygaz-test;Trusted_Connection=True;TrustServerCertificate=True"
+        });
+
+        Assert.IsType<DapperSqlDataAccess>(provider.GetRequiredService<IECommerceDataAccess>());
+        Assert.NotNull(provider.GetService<IRelationalDatabaseInitializer>());
+        Assert.Null(provider.GetService<IMongoDatabaseInitializer>());
+    }
+
+    [Fact]
     public void DependencyInjection_RejectsUnknownProvider()
     {
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
