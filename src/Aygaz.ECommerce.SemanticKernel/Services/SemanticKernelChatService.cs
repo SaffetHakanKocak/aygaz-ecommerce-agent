@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.Text.RegularExpressions;
+using Aygaz.ECommerce.Agent.Models;
 using Aygaz.ECommerce.SemanticKernel.Agents;
 using Aygaz.ECommerce.SemanticKernel.Guardrails;
 using Aygaz.ECommerce.SemanticKernel.Capabilities;
@@ -9,6 +12,10 @@ namespace Aygaz.ECommerce.SemanticKernel.Services;
 
 public sealed class SemanticKernelChatService : ISemanticKernelChatService
 {
+    private static readonly Regex SkuPattern = new(
+        @"\bAYG-[A-Z0-9]+(?:-[A-Z0-9]+)+\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
     private readonly SemanticKernelAgentHost _host;
 
     public SemanticKernelChatService(SemanticKernelAgentHost host)
@@ -45,7 +52,8 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
         }
 
         // Deterministic in-domain company-info / unsupported capabilities — no LLM needed.
-        if (AygazCompanyInfoResolver.TryResolve(normalizedMessage, out AygazCapability companyCapability))
+        if (AygazCompanyInfoResolver.TryResolve(normalizedMessage, out AygazCapability companyCapability)
+            && companyCapability == AygazCapability.Unknown)
         {
             stopwatch.Stop();
             return CreateBlockedResult(
@@ -140,10 +148,7 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
                 stopwatch.ElapsedMilliseconds);
         }
 
-        if (capability is AygazCapability.ProductInventory
-            or AygazCapability.Sales
-            or AygazCapability.Policy
-            or AygazCapability.Unknown)
+        if (capability == AygazCapability.Unknown)
         {
             stopwatch.Stop();
             return CreateBlockedResult(
@@ -153,7 +158,7 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
                 stopwatch.ElapsedMilliseconds);
         }
 
-        ChatCompletionAgent? agent = ResolveAgent(capability);
+        ChatCompletionAgent? agent = ResolveAgent(capability, normalizedMessage);
         if (agent is null)
         {
             stopwatch.Stop();
@@ -162,6 +167,19 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
                 guardrail,
                 capability,
                 stopwatch.ElapsedMilliseconds);
+        }
+
+        if (capability == AygazCapability.ProductInventory
+            && TryExtractSku(normalizedMessage, out string sku)
+            && await TryHandleProductInventoryFastPathAsync(
+                normalizedMessage,
+                sku,
+                agent.Name ?? string.Empty,
+                guardrail,
+                stopwatch,
+                cancellationToken) is { } fastPathResult)
+        {
+            return fastPathResult;
         }
 
         _host.Telemetry.Reset();
@@ -187,15 +205,9 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
             FastPathUsed: _host.Telemetry.Terminated);
     }
 
-    private ChatCompletionAgent? ResolveAgent(AygazCapability capability)
+    private ChatCompletionAgent? ResolveAgent(AygazCapability capability, string userMessage)
     {
-        string? routeKey = capability switch
-        {
-            AygazCapability.Customer => CustomerAgentRegistration.RouteKey,
-            AygazCapability.Order => OrderAgentRegistration.RouteKey,
-            _ => null
-        };
-
+        string? routeKey = MultiAgentRouteResolver.ResolveRouteKey(capability, userMessage);
         if (routeKey is null)
         {
             return null;
@@ -203,6 +215,97 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
 
         string? agentName = _host.Router.ResolveAgentName(routeKey);
         return agentName is null ? null : _host.Registry.GetAgent(agentName);
+    }
+
+    private async Task<SemanticKernelChatResult?> TryHandleProductInventoryFastPathAsync(
+        string userMessage,
+        string sku,
+        string selectedAgent,
+        AygazDomainClassificationResult guardrail,
+        Stopwatch stopwatch,
+        CancellationToken cancellationToken)
+    {
+        ProductDto? product = await _host.ProductService.GetProductBySkuAsync(sku, cancellationToken);
+        if (product is null)
+        {
+            stopwatch.Stop();
+            return new SemanticKernelChatResult(
+                "Urun bulunamadi.",
+                DomainDecision.Allowed,
+                AygazCapability.ProductInventory,
+                selectedAgent,
+                stopwatch.ElapsedMilliseconds,
+                BusinessAgentInvoked: true,
+                BusinessFunctionInvoked: true,
+                GuardrailInferenceCount: guardrail.InferenceCount,
+                AgentInferenceCount: 0,
+                FunctionInvocationCount: 1,
+                InvokedFunctionName: "get_product_by_sku",
+                FastPathUsed: true);
+        }
+
+        if (selectedAgent == InventoryAgentRegistration.AgentName || LooksLikeInventoryRequest(userMessage))
+        {
+            long? stock = await _host.InventoryService.GetTotalAvailableStockAsync(product.Id, cancellationToken);
+            stopwatch.Stop();
+            return new SemanticKernelChatResult(
+                stock is null
+                    ? "Stok bilgisi bulunamadi."
+                    : $"{product.Name} icin toplam kullanilabilir stok: {stock.Value} adet.",
+                DomainDecision.Allowed,
+                AygazCapability.ProductInventory,
+                InventoryAgentRegistration.AgentName,
+                stopwatch.ElapsedMilliseconds,
+                BusinessAgentInvoked: true,
+                BusinessFunctionInvoked: true,
+                GuardrailInferenceCount: guardrail.InferenceCount,
+                AgentInferenceCount: 0,
+                FunctionInvocationCount: 2,
+                InvokedFunctionName: "get_total_product_stock",
+                FastPathUsed: true);
+        }
+
+        stopwatch.Stop();
+        return new SemanticKernelChatResult(
+            FormatProduct(product),
+            DomainDecision.Allowed,
+            AygazCapability.ProductInventory,
+            ProductAgentRegistration.AgentName,
+            stopwatch.ElapsedMilliseconds,
+            BusinessAgentInvoked: true,
+            BusinessFunctionInvoked: true,
+            GuardrailInferenceCount: guardrail.InferenceCount,
+            AgentInferenceCount: 0,
+            FunctionInvocationCount: 1,
+            InvokedFunctionName: "get_product_by_sku",
+            FastPathUsed: true);
+    }
+
+    private static bool TryExtractSku(string message, out string sku)
+    {
+        Match match = SkuPattern.Match(message);
+        sku = match.Success ? match.Value.ToUpperInvariant() : string.Empty;
+        return match.Success;
+    }
+
+    private static bool LooksLikeInventoryRequest(string message)
+    {
+        string normalized = message.ToLowerInvariant();
+        return normalized.Contains("stok", StringComparison.Ordinal)
+               || normalized.Contains("envanter", StringComparison.Ordinal)
+               || normalized.Contains("inventory", StringComparison.Ordinal);
+    }
+
+    private static string FormatProduct(ProductDto product)
+    {
+        string status = product.IsActive ? "aktif" : "pasif";
+        return "Urun Bilgileri\n"
+               + $"SKU: {product.Sku}\n"
+               + $"Ad: {product.Name}\n"
+               + $"Kategori: {product.Category}\n"
+               + $"Birim Fiyat: {product.UnitPrice.ToString("N2", CultureInfo.GetCultureInfo("tr-TR"))} TRY\n"
+               + $"Durum: {status}\n"
+               + $"Urun ID: {product.Id}";
     }
 
     private static SemanticKernelChatResult CreateBlockedResult(

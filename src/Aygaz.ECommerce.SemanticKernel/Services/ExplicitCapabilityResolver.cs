@@ -30,6 +30,12 @@ internal static class ExplicitCapabilityResolver
 
         string normalized = Normalize(message);
 
+        if (HasExplicitProductInventoryIntent(normalized))
+        {
+            capability = AygazCapability.ProductInventory;
+            return true;
+        }
+
         if (HasExplicitOrderIntent(normalized, message))
         {
             capability = AygazCapability.Order;
@@ -71,7 +77,8 @@ internal static class ExplicitCapabilityResolver
 
     private static bool HasExplicitOrderIntent(string normalized, string originalMessage)
     {
-        if (normalized.Contains("ayg-demo-", StringComparison.Ordinal))
+        if (normalized.Contains("ayg-demo-", StringComparison.Ordinal)
+            && !normalized.Contains("ayg-demo-prd-", StringComparison.Ordinal))
         {
             return true;
         }
@@ -102,6 +109,22 @@ internal static class ExplicitCapabilityResolver
                || normalized.Contains("siparisi", StringComparison.Ordinal)
                || normalized.Contains("sipariş bilgi", StringComparison.Ordinal)
                || normalized.Contains("siparis bilgi", StringComparison.Ordinal);
+    }
+
+    private static bool HasExplicitProductInventoryIntent(string normalized)
+    {
+        if (normalized.Contains("ayg-demo-prd-", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return normalized.Contains("stok", StringComparison.Ordinal)
+               || normalized.Contains("envanter", StringComparison.Ordinal)
+               || normalized.Contains("inventory", StringComparison.Ordinal)
+               || normalized.Contains("ürün", StringComparison.Ordinal)
+               || normalized.Contains("urun", StringComparison.Ordinal)
+               || normalized.Contains("sku", StringComparison.Ordinal)
+               || normalized.Contains("kategori", StringComparison.Ordinal);
     }
 
     private static bool HasExplicitCustomerIntent(string message)

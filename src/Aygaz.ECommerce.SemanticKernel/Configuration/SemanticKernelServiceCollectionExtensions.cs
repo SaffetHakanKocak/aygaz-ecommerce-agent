@@ -1,5 +1,6 @@
 using Aygaz.AgentFramework.Configuration;
 using Aygaz.AgentFramework.Kernel;
+using Aygaz.ECommerce.Agent.Configuration;
 using Aygaz.ECommerce.SemanticKernel.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,6 +15,14 @@ public static class SemanticKernelServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
+
+        services
+            .AddOptions<CommerceOptions>()
+            .Bind(configuration.GetSection(CommerceOptions.SectionName));
+
+        services
+            .AddOptions<AgentOptions>()
+            .Bind(configuration.GetSection(AgentOptions.SectionName));
 
         services.AddSingleton(_ => CreateOptions(configuration));
         services.AddSingleton<SemanticKernelAgentHost>();

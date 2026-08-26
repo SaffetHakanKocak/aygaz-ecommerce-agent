@@ -3,6 +3,7 @@ using Aygaz.AgentFramework.Execution;
 using Aygaz.AgentFramework.Observability;
 using Aygaz.AgentFramework.Routing;
 using Aygaz.ECommerce.SemanticKernel.Agents;
+using Aygaz.ECommerce.SemanticKernel.Capabilities;
 
 namespace Aygaz.ECommerce.SemanticKernel.Guardrails;
 
@@ -19,7 +20,7 @@ public sealed class DomainGuardedQueryExecutor
     private readonly IAgentRegistry _registry;
     private readonly IAgentRunner _runner;
     private readonly KernelInvocationTelemetry? _telemetry;
-    private readonly string _routeKey;
+    private readonly string? _routeKey;
 
     public DomainGuardedQueryExecutor(
         IAygazDomainGuardrail guardrail,
@@ -39,9 +40,7 @@ public sealed class DomainGuardedQueryExecutor
         _registry = registry;
         _runner = runner;
         _telemetry = telemetry;
-        _routeKey = string.IsNullOrWhiteSpace(routeKey)
-            ? CustomerAgentRegistration.RouteKey
-            : routeKey;
+        _routeKey = string.IsNullOrWhiteSpace(routeKey) ? null : routeKey;
     }
 
     public async Task<DomainGuardedQueryResult> ExecuteAsync(
@@ -65,10 +64,13 @@ public sealed class DomainGuardedQueryExecutor
             return Blocked(guardrail, AmbiguousResponse);
         }
 
-        string? agentName = _router.ResolveAgentName(_routeKey);
+        string routeKey = _routeKey
+            ?? MultiAgentRouteResolver.ResolveRouteKey(guardrail.Capability, userMessage)
+            ?? CustomerAgentRegistration.RouteKey;
+        string? agentName = _router.ResolveAgentName(routeKey);
         if (agentName is null)
         {
-            throw new InvalidOperationException($"No agent is mapped for route '{_routeKey}'.");
+            throw new InvalidOperationException($"No agent is mapped for route '{routeKey}'.");
         }
 
         _telemetry?.Reset();

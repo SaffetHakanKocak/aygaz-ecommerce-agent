@@ -41,6 +41,16 @@ public sealed class ExplicitCapabilityResolverTests
             "AYG-DEMO-1004 siparişinin bilgilerini getir."));
     }
 
+    [Theory]
+    [InlineData("AYG-DEMO-PRD-001 urununu getir")]
+    [InlineData("AYG-DEMO-PRD-001 stokta mi?")]
+    [InlineData("stok durumunu goster")]
+    public void ProductAndStockSignals_ResolveProductInventory(string message)
+    {
+        Assert.True(ExplicitCapabilityResolver.TryResolve(message, out AygazCapability capability));
+        Assert.Equal(AygazCapability.ProductInventory, capability);
+    }
+
     [Fact]
     public void ExplicitCustomerPhone_OverridesOrderHistoryContext()
     {
