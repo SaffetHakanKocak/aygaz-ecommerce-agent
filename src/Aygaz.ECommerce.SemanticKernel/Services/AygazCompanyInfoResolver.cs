@@ -25,11 +25,6 @@ internal static class AygazCompanyInfoResolver
             return false;
         }
 
-        if (IsBusinessLookup(normalized))
-        {
-            return false;
-        }
-
         if (IsSales(normalized))
         {
             capability = AygazCapability.Sales;
@@ -40,6 +35,11 @@ internal static class AygazCompanyInfoResolver
         {
             capability = AygazCapability.Policy;
             return true;
+        }
+
+        if (IsBusinessLookup(normalized))
+        {
+            return false;
         }
 
         if (IsProductInventory(normalized))

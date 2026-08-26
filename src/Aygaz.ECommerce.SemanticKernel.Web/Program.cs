@@ -11,6 +11,8 @@ public partial class Program
     public static async Task Main(string[] args)
     {
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+        builder.Logging.ClearProviders();
+        builder.Logging.AddConsole();
 
         builder.Services
             .AddOptions<ChatApiOptions>()

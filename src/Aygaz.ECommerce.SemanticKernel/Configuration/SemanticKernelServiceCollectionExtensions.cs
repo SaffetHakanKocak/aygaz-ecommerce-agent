@@ -39,7 +39,6 @@ public static class SemanticKernelServiceCollectionExtensions
         var provider = SemanticKernelOptions.ParseProvider(providerValue);
         if (provider == SemanticKernelProvider.Groq
             && (string.IsNullOrWhiteSpace(endpoint)
-                || endpoint.Contains("localhost", StringComparison.OrdinalIgnoreCase)
                 || endpoint.Contains("11434", StringComparison.OrdinalIgnoreCase)))
         {
             endpoint = SemanticKernelFactory.DefaultGroqEndpoint;

@@ -42,6 +42,16 @@ public sealed class ExplicitCapabilityResolverTests
     }
 
     [Theory]
+    [InlineData("AYG-DEMO-1004 siparisini musteri talebi nedeniyle iptal et.")]
+    [InlineData("AYG-DEMO-1004 siparis durumunu Shipped olarak guncelle, neden: depo cikisi yapildi.")]
+    [InlineData("AYG-DEMO-1004 audit kayitlarini goster.")]
+    public void ExplicitOrderOperation_ResolvesOrder(string message)
+    {
+        Assert.True(ExplicitCapabilityResolver.TryResolve(message, out AygazCapability capability));
+        Assert.Equal(AygazCapability.Order, capability);
+    }
+
+    [Theory]
     [InlineData("AYG-DEMO-PRD-001 urununu getir")]
     [InlineData("AYG-DEMO-PRD-001 stokta mi?")]
     [InlineData("stok durumunu goster")]
@@ -49,6 +59,15 @@ public sealed class ExplicitCapabilityResolverTests
     {
         Assert.True(ExplicitCapabilityResolver.TryResolve(message, out AygazCapability capability));
         Assert.Equal(AygazCapability.ProductInventory, capability);
+    }
+
+    [Fact]
+    public void CustomerSupportPolicy_ResolvesPolicy()
+    {
+        Assert.True(ExplicitCapabilityResolver.TryResolve(
+            "Aygaz musteri destek politikalarini kisaca ozetle",
+            out AygazCapability capability));
+        Assert.Equal(AygazCapability.Policy, capability);
     }
 
     [Fact]

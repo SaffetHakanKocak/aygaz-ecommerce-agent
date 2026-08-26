@@ -9,12 +9,18 @@ namespace Aygaz.ECommerce.SemanticKernel.Plugins;
 
 public sealed class OrderPlugin
 {
+    private const string AgentActor = "semantic-kernel-agent";
     private readonly IOrderService _orderService;
+    private readonly IOrderOperationService _orderOperationService;
     private readonly int _maxOrderSearchResults;
 
-    public OrderPlugin(IOrderService orderService, int maxOrderSearchResults = 5)
+    public OrderPlugin(
+        IOrderService orderService,
+        IOrderOperationService orderOperationService,
+        int maxOrderSearchResults = 5)
     {
         ArgumentNullException.ThrowIfNull(orderService);
+        ArgumentNullException.ThrowIfNull(orderOperationService);
 
         if (maxOrderSearchResults <= 0)
         {
@@ -24,6 +30,7 @@ public sealed class OrderPlugin
         }
 
         _orderService = orderService;
+        _orderOperationService = orderOperationService;
         _maxOrderSearchResults = maxOrderSearchResults;
     }
 
@@ -80,6 +87,72 @@ public sealed class OrderPlugin
         return order is null ? null : ToResult(order);
     }
 
+    [KernelFunction("cancel_order")]
+    [Description("Use only when the user explicitly asks to cancel an order, provides an exact order number, and provides the cancellation reason.")]
+    public async Task<string> CancelOrderAsync(
+        [Description("Exact order number.")] string orderNumber,
+        [Description("Cancellation reason provided by the user.")] string reason,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(orderNumber) || string.IsNullOrWhiteSpace(reason))
+        {
+            return "Siparisi iptal etmek icin siparis numarasi ve iptal nedeni gerekli.";
+        }
+
+        OrderOperationResultDto result = await _orderOperationService.CancelOrderAsync(
+            orderNumber.Trim(),
+            reason.Trim(),
+            AgentActor,
+            cancellationToken);
+
+        return FormatOperationResult(result);
+    }
+
+    [KernelFunction("update_order_status")]
+    [Description("Use only when the user explicitly asks to update an order status, provides an exact order number, the target status, and the reason.")]
+    public async Task<string> UpdateOrderStatusAsync(
+        [Description("Exact order number.")] string orderNumber,
+        [Description("Target status: Pending, Preparing, Shipped, Delivered, or Cancelled.")] string newStatus,
+        [Description("Status update reason provided by the user.")] string reason,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(orderNumber) || string.IsNullOrWhiteSpace(newStatus) || string.IsNullOrWhiteSpace(reason))
+        {
+            return "Durum guncellemek icin siparis numarasi, yeni durum ve islem nedeni gerekli.";
+        }
+
+        if (!Enum.TryParse(newStatus.Trim(), true, out OrderStatus parsedStatus))
+        {
+            return "Gecersiz siparis durumu. Gecerli durumlar: Pending, Preparing, Shipped, Delivered, Cancelled.";
+        }
+
+        OrderOperationResultDto result = await _orderOperationService.UpdateOrderStatusAsync(
+            orderNumber.Trim(),
+            parsedStatus,
+            reason.Trim(),
+            AgentActor,
+            cancellationToken);
+
+        return FormatOperationResult(result);
+    }
+
+    [KernelFunction("get_order_audit_logs")]
+    [Description("Use when the user asks for audit history, operation history, or change log of an exact order number.")]
+    public async Task<IReadOnlyList<OrderAuditLogDto>> GetOrderAuditLogsAsync(
+        [Description("Exact order number.")] string orderNumber,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(orderNumber))
+        {
+            return [];
+        }
+
+        return await _orderOperationService.GetOrderAuditLogsAsync(
+            orderNumber.Trim(),
+            _maxOrderSearchResults,
+            cancellationToken);
+    }
+
     private static OrderAgentResult ToResult(OrderDto order)
     {
         return new OrderAgentResult(
@@ -101,5 +174,18 @@ public sealed class OrderPlugin
             OrderStatus.Cancelled => "İptal edildi",
             _ => "Bilinmiyor"
         };
+    }
+
+    private static string FormatOperationResult(OrderOperationResultDto result)
+    {
+        if (!result.Success || result.Order is null || result.NewStatus is null)
+        {
+            return result.Message;
+        }
+
+        string auditSuffix = string.IsNullOrWhiteSpace(result.AuditLogId)
+            ? string.Empty
+            : $" Audit kaydi: {result.AuditLogId}.";
+        return $"{result.Order.OrderNumber} siparisinin durumu {ToTurkishStatus(result.NewStatus.Value)} olarak guncellendi.{auditSuffix}";
     }
 }

@@ -42,6 +42,23 @@ public sealed class DapperDataAccessContractTests
         Assert.NotNull(latestOrder);
         Assert.Equal("ORD-002", latestOrder.OrderNumber);
         Assert.Equal(30m, (await access.GetSalesSummaryAsync(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31))).TotalRevenue);
+
+        OrderOperationResultDto updateResult = await access.UpdateOrderStatusAsync(
+            "ORD-002",
+            OrderStatus.Shipped,
+            "contract test",
+            "test-runner");
+        Assert.False(updateResult.Success);
+        Assert.Contains("degistirilemez", updateResult.Message, StringComparison.Ordinal);
+
+        await keepAlive.ExecuteNonQueryAsync("INSERT INTO CustomerOrders (Id, OrderNumber, CustomerId, OrderDate, Status, TotalAmount) VALUES (22, 'ORD-003', 1, '2026-01-04', 'Preparing', 10);");
+        OrderOperationResultDto cancelResult = await access.CancelOrderAsync("ORD-003", "customer request", "test-runner");
+        Assert.True(cancelResult.Success);
+        Assert.Equal(OrderStatus.Cancelled, cancelResult.NewStatus);
+        IReadOnlyList<OrderAuditLogDto> logs = await access.GetOrderAuditLogsAsync("ORD-003", 5);
+        Assert.Single(logs);
+        Assert.Equal("CancelOrder", logs[0].Operation);
+        Assert.Equal("customer request", logs[0].Reason);
     }
 
     private static async Task SeedAsync(DbConnection connection)

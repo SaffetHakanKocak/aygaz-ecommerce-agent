@@ -32,7 +32,7 @@ public sealed class MultiAgentOperationTests
             router);
 
         CustomerAgentRegistration.Register(registrar, new RecordingCustomerService());
-        OrderAgentRegistration.Register(registrar, new RecordingOrderService());
+        OrderAgentRegistration.Register(registrar, new RecordingOrderService(), new RecordingOrderOperationService());
         ProductAgentRegistration.Register(registrar, new RecordingProductService());
         InventoryAgentRegistration.Register(
             registrar,

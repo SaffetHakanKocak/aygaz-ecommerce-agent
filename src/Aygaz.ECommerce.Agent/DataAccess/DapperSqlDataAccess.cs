@@ -121,6 +121,82 @@ public sealed class DapperSqlDataAccess : IECommerceDataAccess
         return new OrderDetailDto(order, items);
     }
 
+    public Task<OrderOperationResultDto> CancelOrderAsync(string orderNumber, string reason, string actor, CancellationToken cancellationToken = default)
+    {
+        return UpdateOrderStatusAsync(orderNumber, OrderStatus.Cancelled, reason, actor, cancellationToken);
+    }
+
+    public async Task<OrderOperationResultDto> UpdateOrderStatusAsync(string orderNumber, OrderStatus newStatus, string reason, string actor, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(orderNumber) || string.IsNullOrWhiteSpace(reason))
+        {
+            return OperationFailure("Siparis numarasi ve islem nedeni zorunludur.");
+        }
+
+        OrderDto? existingOrder = await GetOrderByNumberAsync(orderNumber, cancellationToken);
+        if (existingOrder is null)
+        {
+            return OperationFailure("Siparis bulunamadi.");
+        }
+
+        if (!CanChangeStatus(existingOrder.Status, newStatus, out string message))
+        {
+            return new OrderOperationResultDto(false, message, existingOrder, existingOrder.Status, newStatus, null);
+        }
+
+        string auditId = Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
+        DateTime createdAt = DateTime.UtcNow;
+        await using DbConnection connection = connectionFactory();
+        await connection.OpenAsync(cancellationToken);
+
+        await ExecuteAsync(connection, "UPDATE CustomerOrders SET Status = @Status WHERE Id = @Id;", new
+        {
+            Status = newStatus.ToString(),
+            existingOrder.Id
+        }, cancellationToken);
+        await ExecuteAsync(connection, """
+            INSERT INTO OrderAuditLogs (Id, OrderId, OrderNumber, Operation, PreviousStatus, NewStatus, Reason, Actor, CreatedAt)
+            VALUES (@Id, @OrderId, @OrderNumber, @Operation, @PreviousStatus, @NewStatus, @Reason, @Actor, @CreatedAt);
+            """, new
+        {
+            Id = auditId,
+            OrderId = existingOrder.Id,
+            existingOrder.OrderNumber,
+            Operation = newStatus == OrderStatus.Cancelled ? "CancelOrder" : "UpdateOrderStatus",
+            PreviousStatus = existingOrder.Status.ToString(),
+            NewStatus = newStatus.ToString(),
+            Reason = reason.Trim(),
+            Actor = string.IsNullOrWhiteSpace(actor) ? "semantic-kernel-agent" : actor.Trim(),
+            CreatedAt = createdAt
+        }, cancellationToken);
+
+        OrderDto updatedOrder = existingOrder with { Status = newStatus };
+        return new OrderOperationResultDto(true, "Siparis durumu guncellendi.", updatedOrder, existingOrder.Status, newStatus, auditId);
+    }
+
+    public async Task<IReadOnlyList<OrderAuditLogDto>> GetOrderAuditLogsAsync(string orderNumber, int maxResults, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(orderNumber) || maxResults <= 0) return [];
+        string take = provider == RelationalDatabaseProvider.SqlServer ? "TOP (@MaxResults)" : "";
+        string limit = provider == RelationalDatabaseProvider.Sqlite ? "LIMIT @MaxResults" : "";
+        IReadOnlyList<OrderAuditLogRow> rows = await QueryAsync<OrderAuditLogRow>($"""
+            SELECT {take} Id, OrderId, OrderNumber, Operation, PreviousStatus, NewStatus, Reason, Actor, CreatedAt
+            FROM OrderAuditLogs
+            WHERE LOWER(OrderNumber) = LOWER(@OrderNumber)
+            ORDER BY CreatedAt DESC {limit};
+            """, new { OrderNumber = orderNumber.Trim(), MaxResults = maxResults }, cancellationToken);
+        return rows.Select(row => new OrderAuditLogDto(
+            row.Id,
+            (int)row.OrderId,
+            row.OrderNumber,
+            row.Operation,
+            Enum.Parse<OrderStatus>(row.PreviousStatus, true),
+            Enum.Parse<OrderStatus>(row.NewStatus, true),
+            row.Reason,
+            row.Actor,
+            DateTime.Parse(row.CreatedAt, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal))).ToList();
+    }
+
     public Task<IReadOnlyList<InventoryDto>> GetProductInventoryAsync(int productId, int maxResults, CancellationToken cancellationToken = default)
     {
         if (productId <= 0 || maxResults <= 0) return Task.FromResult<IReadOnlyList<InventoryDto>>([]);
@@ -181,6 +257,12 @@ public sealed class DapperSqlDataAccess : IECommerceDataAccess
         return await connection.QuerySingleOrDefaultAsync<T>(command);
     }
 
+    private static async Task ExecuteAsync(DbConnection connection, string sql, object parameters, CancellationToken cancellationToken)
+    {
+        CommandDefinition command = new(sql, parameters, cancellationToken: cancellationToken);
+        await connection.ExecuteAsync(command);
+    }
+
     private string OrderSelect(string whereAndOrder, string take = "") => $"SELECT {take} Id, OrderNumber, CustomerId, OrderDate, Status, TotalAmount FROM CustomerOrders {whereAndOrder};";
     private string EligibleOrdersSql(string projection, string extra = "") => $"SELECT {projection} FROM CustomerOrders WHERE Status <> @Cancelled AND OrderDate >= @FromDate AND OrderDate < @ToDate {extra};";
     private string SalesAggregateSql(string? extra) => $"SELECT SUM(oi.UnitPrice * oi.Quantity) AS Revenue, SUM(oi.Quantity) AS Quantity FROM CustomerOrders o INNER JOIN OrderItems oi ON oi.CustomerOrderId = o.Id WHERE o.Status <> @Cancelled AND o.OrderDate >= @FromDate AND o.OrderDate < @ToDate {extra};";
@@ -195,10 +277,53 @@ public sealed class DapperSqlDataAccess : IECommerceDataAccess
     };
 
     private static string EscapeLikePattern(string value) => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal);
+
+    private static OrderOperationResultDto OperationFailure(string message) =>
+        new(false, message, null, null, null, null);
+
+    private static bool CanChangeStatus(OrderStatus currentStatus, OrderStatus newStatus, out string message)
+    {
+        if (currentStatus == newStatus)
+        {
+            message = "Siparis zaten bu durumda.";
+            return false;
+        }
+
+        if (currentStatus is OrderStatus.Delivered or OrderStatus.Cancelled)
+        {
+            message = "Teslim edilmis veya iptal edilmis siparislerde durum degistirilemez.";
+            return false;
+        }
+
+        message = string.Empty;
+        return true;
+    }
+
     private sealed class SalesAggregate
     {
         public decimal? Revenue { get; set; }
 
         public long? Quantity { get; set; }
+    }
+
+    private sealed class OrderAuditLogRow
+    {
+        public string Id { get; set; } = string.Empty;
+
+        public long OrderId { get; set; }
+
+        public string OrderNumber { get; set; } = string.Empty;
+
+        public string Operation { get; set; } = string.Empty;
+
+        public string PreviousStatus { get; set; } = string.Empty;
+
+        public string NewStatus { get; set; } = string.Empty;
+
+        public string Reason { get; set; } = string.Empty;
+
+        public string Actor { get; set; } = string.Empty;
+
+        public string CreatedAt { get; set; } = string.Empty;
     }
 }

@@ -26,7 +26,7 @@ public sealed class OrderPluginTests
         {
             OrderByNumber = CreateOrder("AYG-DEMO-1004", OrderStatus.Preparing)
         };
-        var plugin = new OrderPlugin(service);
+        var plugin = new OrderPlugin(service, new RecordingOrderOperationService());
 
         OrderAgentResult? result = await plugin.GetOrderByNumberAsync("  AYG-DEMO-1004  ");
 
@@ -48,7 +48,7 @@ public sealed class OrderPluginTests
                 CreateOrder("AYG-DEMO-1002", OrderStatus.Cancelled)
             ]
         };
-        var plugin = new OrderPlugin(service);
+        var plugin = new OrderPlugin(service, new RecordingOrderOperationService());
 
         IReadOnlyList<OrderAgentResult> results = await plugin.GetCustomerOrdersAsync(1);
 
@@ -64,7 +64,7 @@ public sealed class OrderPluginTests
         {
             LatestOrder = CreateOrder("AYG-DEMO-1004", OrderStatus.Preparing)
         };
-        var plugin = new OrderPlugin(service);
+        var plugin = new OrderPlugin(service, new RecordingOrderOperationService());
 
         OrderAgentResult? result = await plugin.GetLatestCustomerOrderAsync(1);
 
@@ -75,21 +75,59 @@ public sealed class OrderPluginTests
     }
 
     [Fact]
-    public void Plugin_DoesNotExposeWriteOrBulkFunctions()
+    public void Plugin_ExposesControlledWriteFunctionsOnly()
     {
         var functions = Microsoft.SemanticKernel.KernelPluginFactory
-            .CreateFromObject(new OrderPlugin(new RecordingOrderService()))
+            .CreateFromObject(new OrderPlugin(new RecordingOrderService(), new RecordingOrderOperationService()))
             .Select(function => function.Name)
             .ToArray();
 
-        Assert.Equal(3, functions.Length);
+        Assert.Equal(6, functions.Length);
         Assert.Contains("get_order_by_number", functions);
         Assert.Contains("get_customer_orders", functions);
         Assert.Contains("get_latest_customer_order", functions);
+        Assert.Contains("cancel_order", functions);
+        Assert.Contains("update_order_status", functions);
+        Assert.Contains("get_order_audit_logs", functions);
         Assert.DoesNotContain("get_all_orders", functions);
         Assert.DoesNotContain("create_order", functions);
-        Assert.DoesNotContain("update_order", functions);
-        Assert.DoesNotContain("cancel_order", functions);
+        Assert.DoesNotContain("delete_order", functions);
+    }
+
+    [Fact]
+    public async Task CancelOrder_CallsOperationService()
+    {
+        var operationService = new RecordingOrderOperationService
+        {
+            OperationResult = new OrderOperationResultDto(
+                true,
+                "Siparis durumu guncellendi.",
+                CreateOrder("AYG-DEMO-1004", OrderStatus.Cancelled),
+                OrderStatus.Preparing,
+                OrderStatus.Cancelled,
+                "audit-1")
+        };
+        var plugin = new OrderPlugin(new RecordingOrderService(), operationService);
+
+        string result = await plugin.CancelOrderAsync(" AYG-DEMO-1004 ", "musteri talebi");
+
+        Assert.Equal(1, operationService.CancelCallCount);
+        Assert.Equal("AYG-DEMO-1004", operationService.LastOrderNumber);
+        Assert.Equal("musteri talebi", operationService.LastReason);
+        Assert.Contains("AYG-DEMO-1004", result, StringComparison.Ordinal);
+        Assert.Contains("audit-1", result, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task UpdateOrderStatus_RejectsInvalidStatus()
+    {
+        var operationService = new RecordingOrderOperationService();
+        var plugin = new OrderPlugin(new RecordingOrderService(), operationService);
+
+        string result = await plugin.UpdateOrderStatusAsync("AYG-DEMO-1004", "Unknown", "test");
+
+        Assert.Equal(0, operationService.UpdateCallCount);
+        Assert.Contains("Gecersiz", result, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -126,7 +164,7 @@ public sealed class OrderAgentRegistrationTests
             registry,
             router);
 
-        var agent = OrderAgentRegistration.Register(registrar, new RecordingOrderService());
+        var agent = OrderAgentRegistration.Register(registrar, new RecordingOrderService(), new RecordingOrderOperationService());
 
         Assert.Equal(OrderAgentRegistration.AgentName, agent.Name);
         Assert.Equal(OrderAgentRegistration.AgentName, router.ResolveAgentName("order"));
@@ -138,9 +176,12 @@ public sealed class OrderAgentRegistrationTests
             .ToArray();
 
         Assert.Single(agent.Kernel.Plugins);
-        Assert.Equal(3, functionNames.Length);
+        Assert.Equal(6, functionNames.Length);
         Assert.Contains("get_order_by_number", functionNames);
+        Assert.Contains("cancel_order", functionNames);
+        Assert.Contains("update_order_status", functionNames);
         Assert.DoesNotContain("get_all_orders", functionNames);
+        Assert.DoesNotContain("create_order", functionNames);
         Assert.Contains(
             agent.Kernel.AutoFunctionInvocationFilters,
             filter => filter is OrderExactLookupTerminationFilter);
@@ -163,7 +204,7 @@ public sealed class OrderAgentRegistrationTests
             router);
 
         var customerAgent = CustomerAgentRegistration.Register(registrar, new RecordingCustomerService());
-        var orderAgent = OrderAgentRegistration.Register(registrar, new RecordingOrderService());
+        var orderAgent = OrderAgentRegistration.Register(registrar, new RecordingOrderService(), new RecordingOrderOperationService());
 
         Assert.NotSame(customerAgent.Kernel, orderAgent.Kernel);
 
@@ -391,5 +432,61 @@ internal sealed class RecordingOrderService : IOrderService
         GetLatestCustomerOrderCallCount++;
         LastCustomerId = customerId;
         return Task.FromResult(LatestOrder);
+    }
+}
+
+internal sealed class RecordingOrderOperationService : IOrderOperationService
+{
+    public OrderOperationResultDto OperationResult { get; init; } =
+        new(true, "Siparis durumu guncellendi.", null, OrderStatus.Pending, OrderStatus.Cancelled, "audit-1");
+
+    public IReadOnlyList<OrderAuditLogDto> AuditLogs { get; init; } = [];
+
+    public int CancelCallCount { get; private set; }
+
+    public int UpdateCallCount { get; private set; }
+
+    public int AuditLogCallCount { get; private set; }
+
+    public string? LastOrderNumber { get; private set; }
+
+    public string? LastReason { get; private set; }
+
+    public OrderStatus LastStatus { get; private set; }
+
+    public Task<OrderOperationResultDto> CancelOrderAsync(
+        string orderNumber,
+        string reason,
+        string actor,
+        CancellationToken cancellationToken = default)
+    {
+        CancelCallCount++;
+        LastOrderNumber = orderNumber;
+        LastReason = reason;
+        return Task.FromResult(OperationResult);
+    }
+
+    public Task<OrderOperationResultDto> UpdateOrderStatusAsync(
+        string orderNumber,
+        OrderStatus newStatus,
+        string reason,
+        string actor,
+        CancellationToken cancellationToken = default)
+    {
+        UpdateCallCount++;
+        LastOrderNumber = orderNumber;
+        LastStatus = newStatus;
+        LastReason = reason;
+        return Task.FromResult(OperationResult);
+    }
+
+    public Task<IReadOnlyList<OrderAuditLogDto>> GetOrderAuditLogsAsync(
+        string orderNumber,
+        int maxResults,
+        CancellationToken cancellationToken = default)
+    {
+        AuditLogCallCount++;
+        LastOrderNumber = orderNumber;
+        return Task.FromResult(AuditLogs);
     }
 }

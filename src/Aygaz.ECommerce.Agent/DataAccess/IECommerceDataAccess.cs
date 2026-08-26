@@ -1,4 +1,5 @@
 using Aygaz.ECommerce.Agent.Models;
+using Aygaz.ECommerce.Agent.Entities;
 
 namespace Aygaz.ECommerce.Agent.DataAccess;
 
@@ -55,6 +56,24 @@ public interface IECommerceDataAccess
 
     Task<OrderDetailDto?> GetCustomerOrderDetailAsync(
         int orderId,
+        CancellationToken cancellationToken = default);
+
+    Task<OrderOperationResultDto> CancelOrderAsync(
+        string orderNumber,
+        string reason,
+        string actor,
+        CancellationToken cancellationToken = default);
+
+    Task<OrderOperationResultDto> UpdateOrderStatusAsync(
+        string orderNumber,
+        OrderStatus newStatus,
+        string reason,
+        string actor,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<OrderAuditLogDto>> GetOrderAuditLogsAsync(
+        string orderNumber,
+        int maxResults,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<InventoryDto>> GetProductInventoryAsync(

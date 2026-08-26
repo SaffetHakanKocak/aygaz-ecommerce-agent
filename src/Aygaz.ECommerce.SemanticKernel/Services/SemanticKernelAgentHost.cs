@@ -52,7 +52,10 @@ public sealed class SemanticKernelAgentHost
         CustomerAgentRegistration.Register(registrar, customerService, agentOptions.Value.MaxNameSearchResults);
 
         var orderService = new ScopedOrderServiceAccessor(scopeFactory);
-        OrderAgentRegistration.Register(registrar, orderService, agentOptions.Value.MaxOrderSearchResults);
+        var orderOperationService = new ScopedOrderOperationServiceAccessor(scopeFactory);
+        OrderService = orderService;
+        OrderOperationService = orderOperationService;
+        OrderAgentRegistration.Register(registrar, orderService, orderOperationService, agentOptions.Value.MaxOrderSearchResults);
 
         ProductService = new ScopedProductServiceAccessor(scopeFactory);
         ProductAgentRegistration.Register(registrar, ProductService, agentOptions.Value.MaxProductSearchResults);
@@ -83,6 +86,10 @@ public sealed class SemanticKernelAgentHost
     public IAgentRunner Runner { get; }
 
     public IAygazDomainGuardrail Guardrail { get; }
+
+    public IOrderService OrderService { get; }
+
+    public IOrderOperationService OrderOperationService { get; }
 
     public IProductService ProductService { get; }
 

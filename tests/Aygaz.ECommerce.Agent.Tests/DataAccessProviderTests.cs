@@ -88,11 +88,13 @@ public sealed class DataAccessProviderTests
         Assert.Contains(MongoCollectionSetup.Orders, indexes.Keys);
         Assert.Contains(MongoCollectionSetup.OrderItems, indexes.Keys);
         Assert.Contains(MongoCollectionSetup.Inventory, indexes.Keys);
+        Assert.Contains(MongoCollectionSetup.OrderAuditLogs, indexes.Keys);
         Assert.Equal(2, indexes[MongoCollectionSetup.Customers].Count);
         Assert.Equal(2, indexes[MongoCollectionSetup.Products].Count);
         Assert.Equal(3, indexes[MongoCollectionSetup.Orders].Count);
         Assert.Equal(2, indexes[MongoCollectionSetup.OrderItems].Count);
         Assert.Equal(2, indexes[MongoCollectionSetup.Inventory].Count);
+        Assert.Equal(2, indexes[MongoCollectionSetup.OrderAuditLogs].Count);
         Assert.Equal(2, indexes[MongoCollectionSetup.Customers].Count(index => index.Options?.Unique == true));
         Assert.Equal(2, indexes[MongoCollectionSetup.Products].Count(index => index.Options?.Unique == true));
         Assert.Equal(2, indexes[MongoCollectionSetup.Orders].Count(index => index.Options?.Unique == true));

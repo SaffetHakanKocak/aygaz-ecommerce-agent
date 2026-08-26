@@ -1,8 +1,12 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
+using Aygaz.ECommerce.Agent.Entities;
 using Aygaz.ECommerce.Agent.Models;
+using Aygaz.ECommerce.Agent.Models.Agent;
 using Aygaz.ECommerce.SemanticKernel.Agents;
+using Aygaz.ECommerce.SemanticKernel.Formatting;
 using Aygaz.ECommerce.SemanticKernel.Guardrails;
 using Aygaz.ECommerce.SemanticKernel.Capabilities;
 using Microsoft.SemanticKernel.Agents;
@@ -14,6 +18,9 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
 {
     private static readonly Regex SkuPattern = new(
         @"\bAYG-[A-Z0-9]+(?:-[A-Z0-9]+)+\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex OrderNumberPattern = new(
+        @"\bAYG-(?:DEMO-)?\d{4}-\d{4}\b|\bAYG-DEMO-\d+\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private readonly SemanticKernelAgentHost _host;
@@ -82,6 +89,16 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
                     0),
                 AygazCapability.Order,
                 stopwatch.ElapsedMilliseconds);
+        }
+
+        if (TryExtractOrderNumber(normalizedMessage, out string orderNumber)
+            && await TryHandleOrderFastPathAsync(
+                normalizedMessage,
+                orderNumber,
+                stopwatch,
+                cancellationToken) is { } orderFastPathResult)
+        {
+            return orderFastPathResult;
         }
 
         AygazDomainClassificationResult guardrail = await _host.Guardrail.EvaluateAsync(
@@ -281,10 +298,129 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
             FastPathUsed: true);
     }
 
+    private async Task<SemanticKernelChatResult?> TryHandleOrderFastPathAsync(
+        string userMessage,
+        string orderNumber,
+        Stopwatch stopwatch,
+        CancellationToken cancellationToken)
+    {
+        string normalized = userMessage.ToLower(CultureInfo.GetCultureInfo("tr-TR"));
+
+        if (LooksLikeAuditRequest(normalized))
+        {
+            IReadOnlyList<OrderAuditLogDto> logs = await _host.OrderOperationService.GetOrderAuditLogsAsync(
+                orderNumber,
+                5,
+                cancellationToken);
+            stopwatch.Stop();
+            return CreateOrderFastPathResult(
+                FormatAuditLogs(orderNumber, logs),
+                stopwatch.ElapsedMilliseconds,
+                "get_order_audit_logs");
+        }
+
+        if (LooksLikeCancelRequest(normalized))
+        {
+            string? reason = ExtractReason(userMessage);
+            if (string.IsNullOrWhiteSpace(reason))
+            {
+                stopwatch.Stop();
+                return CreateOrderFastPathResult(
+                    "Siparisi iptal etmek icin iptal nedeni gerekli.",
+                    stopwatch.ElapsedMilliseconds,
+                    "cancel_order");
+            }
+
+            OrderOperationResultDto result = await _host.OrderOperationService.CancelOrderAsync(
+                orderNumber,
+                reason,
+                "semantic-kernel-agent",
+                cancellationToken);
+            stopwatch.Stop();
+            return CreateOrderFastPathResult(
+                FormatOrderOperation(result),
+                stopwatch.ElapsedMilliseconds,
+                "cancel_order");
+        }
+
+        if (LooksLikeStatusUpdateRequest(normalized)
+            && TryParseRequestedStatus(normalized, out OrderStatus status))
+        {
+            string? reason = ExtractReason(userMessage);
+            if (string.IsNullOrWhiteSpace(reason))
+            {
+                stopwatch.Stop();
+                return CreateOrderFastPathResult(
+                    "Durum guncellemek icin islem nedeni gerekli.",
+                    stopwatch.ElapsedMilliseconds,
+                    "update_order_status");
+            }
+
+            OrderOperationResultDto result = await _host.OrderOperationService.UpdateOrderStatusAsync(
+                orderNumber,
+                status,
+                reason,
+                "semantic-kernel-agent",
+                cancellationToken);
+            stopwatch.Stop();
+            return CreateOrderFastPathResult(
+                FormatOrderOperation(result),
+                stopwatch.ElapsedMilliseconds,
+                "update_order_status");
+        }
+
+        OrderDto? order = await _host.OrderService.GetOrderByNumberAsync(orderNumber, cancellationToken);
+        stopwatch.Stop();
+        var resultValue = order is null
+            ? null
+            : new OrderAgentResult(
+                order.Id,
+                order.OrderNumber,
+                order.OrderDate,
+                ToTurkishStatus(order.Status),
+                order.TotalAmount);
+        OrderLookupResponseFormatter.TryFormatExactLookup(
+            "get_order_by_number",
+            resultValue,
+            userMessage,
+            out string text);
+        return CreateOrderFastPathResult(
+            text,
+            stopwatch.ElapsedMilliseconds,
+            "get_order_by_number");
+    }
+
+    private static SemanticKernelChatResult CreateOrderFastPathResult(
+        string content,
+        long durationMs,
+        string invokedFunctionName)
+    {
+        return new SemanticKernelChatResult(
+            content,
+            DomainDecision.Allowed,
+            AygazCapability.Order,
+            OrderAgentRegistration.AgentName,
+            durationMs,
+            BusinessAgentInvoked: true,
+            BusinessFunctionInvoked: true,
+            GuardrailInferenceCount: 0,
+            AgentInferenceCount: 0,
+            FunctionInvocationCount: 1,
+            InvokedFunctionName: invokedFunctionName,
+            FastPathUsed: true);
+    }
+
     private static bool TryExtractSku(string message, out string sku)
     {
         Match match = SkuPattern.Match(message);
         sku = match.Success ? match.Value.ToUpperInvariant() : string.Empty;
+        return match.Success;
+    }
+
+    private static bool TryExtractOrderNumber(string message, out string orderNumber)
+    {
+        Match match = OrderNumberPattern.Match(message);
+        orderNumber = match.Success ? match.Value.ToUpperInvariant() : string.Empty;
         return match.Success;
     }
 
@@ -306,6 +442,144 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
                + $"Birim Fiyat: {product.UnitPrice.ToString("N2", CultureInfo.GetCultureInfo("tr-TR"))} TRY\n"
                + $"Durum: {status}\n"
                + $"Urun ID: {product.Id}";
+    }
+
+    private static bool LooksLikeAuditRequest(string normalized)
+    {
+        return normalized.Contains("audit", StringComparison.Ordinal)
+               || normalized.Contains("kayit", StringComparison.Ordinal)
+               || normalized.Contains("kayıt", StringComparison.Ordinal)
+               || normalized.Contains("log", StringComparison.Ordinal)
+               || normalized.Contains("gecmis", StringComparison.Ordinal)
+               || normalized.Contains("geçmiş", StringComparison.Ordinal);
+    }
+
+    private static bool LooksLikeCancelRequest(string normalized)
+    {
+        return normalized.Contains("iptal", StringComparison.Ordinal)
+               || normalized.Contains("cancel", StringComparison.Ordinal);
+    }
+
+    private static bool LooksLikeStatusUpdateRequest(string normalized)
+    {
+        return (normalized.Contains("durum", StringComparison.Ordinal)
+                || normalized.Contains("status", StringComparison.Ordinal))
+               && (normalized.Contains("guncelle", StringComparison.Ordinal)
+                   || normalized.Contains("güncelle", StringComparison.Ordinal)
+                   || normalized.Contains("degistir", StringComparison.Ordinal)
+                   || normalized.Contains("değiştir", StringComparison.Ordinal));
+    }
+
+    private static bool TryParseRequestedStatus(string normalized, out OrderStatus status)
+    {
+        if (normalized.Contains("pending", StringComparison.Ordinal)
+            || normalized.Contains("bekliyor", StringComparison.Ordinal))
+        {
+            status = OrderStatus.Pending;
+            return true;
+        }
+
+        if (normalized.Contains("preparing", StringComparison.Ordinal)
+            || normalized.Contains("hazirlaniyor", StringComparison.Ordinal)
+            || normalized.Contains("hazırlanıyor", StringComparison.Ordinal))
+        {
+            status = OrderStatus.Preparing;
+            return true;
+        }
+
+        if (normalized.Contains("shipped", StringComparison.Ordinal)
+            || normalized.Contains("kargoya", StringComparison.Ordinal))
+        {
+            status = OrderStatus.Shipped;
+            return true;
+        }
+
+        if (normalized.Contains("delivered", StringComparison.Ordinal)
+            || normalized.Contains("teslim", StringComparison.Ordinal))
+        {
+            status = OrderStatus.Delivered;
+            return true;
+        }
+
+        if (normalized.Contains("cancelled", StringComparison.Ordinal)
+            || normalized.Contains("canceled", StringComparison.Ordinal)
+            || normalized.Contains("iptal", StringComparison.Ordinal))
+        {
+            status = OrderStatus.Cancelled;
+            return true;
+        }
+
+        status = default;
+        return false;
+    }
+
+    private static string? ExtractReason(string userMessage)
+    {
+        string[] markers = ["neden:", "sebep:", "nedeni:", "sebebi:"];
+        foreach (string marker in markers)
+        {
+            int index = userMessage.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (index >= 0)
+            {
+                string reason = userMessage[(index + marker.Length)..].Trim().TrimEnd('.');
+                return reason.Length == 0 ? null : reason;
+            }
+        }
+
+        Match match = Regex.Match(
+            userMessage,
+            @"(?:nedeniyle|sebebiyle|diye)\s+(.+)$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        string value = match.Groups[1].Value.Trim().TrimEnd('.');
+        return value.Length == 0 ? null : value;
+    }
+
+    private static string FormatOrderOperation(OrderOperationResultDto result)
+    {
+        if (!result.Success || result.Order is null || result.NewStatus is null)
+        {
+            return result.Message;
+        }
+
+        string audit = string.IsNullOrWhiteSpace(result.AuditLogId)
+            ? string.Empty
+            : $"\nAudit kaydi: {result.AuditLogId}";
+        return $"{result.Order.OrderNumber} siparisinin durumu {ToTurkishStatus(result.NewStatus.Value)} olarak guncellendi.{audit}";
+    }
+
+    private static string FormatAuditLogs(string orderNumber, IReadOnlyList<OrderAuditLogDto> logs)
+    {
+        if (logs.Count == 0)
+        {
+            return $"{orderNumber} icin audit kaydi bulunamadi.";
+        }
+
+        var builder = new StringBuilder();
+        builder.AppendLine($"{orderNumber} audit kayitlari:");
+        foreach (OrderAuditLogDto log in logs.Take(5))
+        {
+            builder.AppendLine($"- {log.CreatedAt.ToString("dd.MM.yyyy HH:mm", CultureInfo.GetCultureInfo("tr-TR"))}: {log.Operation}, {ToTurkishStatus(log.PreviousStatus)} -> {ToTurkishStatus(log.NewStatus)}, neden: {log.Reason}");
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    private static string ToTurkishStatus(OrderStatus status)
+    {
+        return status switch
+        {
+            OrderStatus.Pending => "Bekliyor",
+            OrderStatus.Preparing => "Hazirlaniyor",
+            OrderStatus.Shipped => "Kargoya verildi",
+            OrderStatus.Delivered => "Teslim edildi",
+            OrderStatus.Cancelled => "Iptal edildi",
+            _ => "Bilinmiyor"
+        };
     }
 
     private static SemanticKernelChatResult CreateBlockedResult(

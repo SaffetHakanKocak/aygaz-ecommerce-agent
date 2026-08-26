@@ -13,6 +13,7 @@ public sealed class MongoDataAccess
     private readonly IMongoCollection<BsonDocument> products;
     private readonly IMongoCollection<BsonDocument> orderItems;
     private readonly IMongoCollection<BsonDocument> inventory;
+    private readonly IMongoCollection<BsonDocument> orderAuditLogs;
 
     public MongoDataAccess(IMongoDatabase database)
     {
@@ -22,6 +23,7 @@ public sealed class MongoDataAccess
         products = database.GetCollection<BsonDocument>(MongoCollectionSetup.Products);
         orderItems = database.GetCollection<BsonDocument>(MongoCollectionSetup.OrderItems);
         inventory = database.GetCollection<BsonDocument>(MongoCollectionSetup.Inventory);
+        orderAuditLogs = database.GetCollection<BsonDocument>(MongoCollectionSetup.OrderAuditLogs);
     }
 
     public async Task<CustomerDto?> GetCustomerByIdAsync(int id, CancellationToken cancellationToken = default)
@@ -134,6 +136,69 @@ public sealed class MongoDataAccess
         return new OrderDetailDto(order, itemDtos);
     }
 
+    public Task<OrderOperationResultDto> CancelOrderAsync(string orderNumber, string reason, string actor, CancellationToken cancellationToken = default)
+    {
+        return UpdateOrderStatusAsync(orderNumber, OrderStatus.Cancelled, reason, actor, cancellationToken);
+    }
+
+    public async Task<OrderOperationResultDto> UpdateOrderStatusAsync(string orderNumber, OrderStatus newStatus, string reason, string actor, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(orderNumber) || string.IsNullOrWhiteSpace(reason))
+        {
+            return OperationFailure("Siparis numarasi ve islem nedeni zorunludur.");
+        }
+
+        BsonDocument? document = await FindOneAsync(
+            orders,
+            Builders<BsonDocument>.Filter.Regex("orderNumber", new BsonRegularExpression($"^{RegexEscape(orderNumber.Trim())}$", "i")),
+            cancellationToken);
+        OrderDto? existingOrder = ToOrder(document);
+        if (existingOrder is null)
+        {
+            return OperationFailure("Siparis bulunamadi.");
+        }
+
+        if (!CanChangeStatus(existingOrder.Status, newStatus, out string message))
+        {
+            return new OrderOperationResultDto(false, message, existingOrder, existingOrder.Status, newStatus, null);
+        }
+
+        DateTime createdAt = DateTime.UtcNow;
+        var update = Builders<BsonDocument>.Update.Set("status", newStatus.ToString());
+        await orders.UpdateOneAsync(
+            Builders<BsonDocument>.Filter.Eq("id", existingOrder.Id),
+            update,
+            cancellationToken: cancellationToken);
+
+        var auditId = ObjectId.GenerateNewId();
+        await orderAuditLogs.InsertOneAsync(new BsonDocument
+        {
+            ["_id"] = auditId,
+            ["orderId"] = existingOrder.Id,
+            ["orderNumber"] = existingOrder.OrderNumber,
+            ["operation"] = newStatus == OrderStatus.Cancelled ? "CancelOrder" : "UpdateOrderStatus",
+            ["previousStatus"] = existingOrder.Status.ToString(),
+            ["newStatus"] = newStatus.ToString(),
+            ["reason"] = reason.Trim(),
+            ["actor"] = string.IsNullOrWhiteSpace(actor) ? "semantic-kernel-agent" : actor.Trim(),
+            ["createdAt"] = createdAt
+        }, cancellationToken: cancellationToken);
+
+        OrderDto updatedOrder = existingOrder with { Status = newStatus };
+        return new OrderOperationResultDto(true, "Siparis durumu guncellendi.", updatedOrder, existingOrder.Status, newStatus, auditId.ToString());
+    }
+
+    public async Task<IReadOnlyList<OrderAuditLogDto>> GetOrderAuditLogsAsync(string orderNumber, int maxResults, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(orderNumber) || maxResults <= 0) return [];
+        var filter = Builders<BsonDocument>.Filter.Regex("orderNumber", new BsonRegularExpression($"^{RegexEscape(orderNumber.Trim())}$", "i"));
+        List<BsonDocument> documents = await orderAuditLogs.Find(filter)
+            .SortByDescending(x => x["createdAt"])
+            .Limit(maxResults)
+            .ToListAsync(cancellationToken);
+        return documents.Select(ToAuditLog).OfType<OrderAuditLogDto>().ToList();
+    }
+
     public async Task<IReadOnlyList<InventoryDto>> GetProductInventoryAsync(int productId, int maxResults, CancellationToken cancellationToken = default)
     {
         if (productId <= 0 || maxResults <= 0) return [];
@@ -202,6 +267,38 @@ public sealed class MongoDataAccess
     private static OrderDto? ToOrder(BsonDocument? document) => document is null ? null : new OrderDto(document["id"].AsInt32, document["orderNumber"].AsString, document["customerId"].AsInt32, document["orderDate"].ToUniversalTime(), Enum.Parse<OrderStatus>(document["status"].AsString, true), document["totalAmount"].ToDecimal());
 
     private static InventoryDto? ToInventory(BsonDocument? document) => document is null ? null : new InventoryDto(document["id"].AsInt32, document["productId"].AsInt32, document["locationCode"].AsString, document["locationName"].AsString, document["quantityAvailable"].AsInt32, document["reorderLevel"].AsInt32, document["updatedAt"].ToUniversalTime());
+
+    private static OrderAuditLogDto? ToAuditLog(BsonDocument? document) => document is null ? null : new OrderAuditLogDto(
+        document.GetValue("_id").ToString() ?? string.Empty,
+        document["orderId"].AsInt32,
+        document["orderNumber"].AsString,
+        document["operation"].AsString,
+        Enum.Parse<OrderStatus>(document["previousStatus"].AsString, true),
+        Enum.Parse<OrderStatus>(document["newStatus"].AsString, true),
+        document["reason"].AsString,
+        document["actor"].AsString,
+        document["createdAt"].ToUniversalTime());
+
+    private static OrderOperationResultDto OperationFailure(string message) =>
+        new(false, message, null, null, null, null);
+
+    private static bool CanChangeStatus(OrderStatus currentStatus, OrderStatus newStatus, out string message)
+    {
+        if (currentStatus == newStatus)
+        {
+            message = "Siparis zaten bu durumda.";
+            return false;
+        }
+
+        if (currentStatus is OrderStatus.Delivered or OrderStatus.Cancelled)
+        {
+            message = "Teslim edilmis veya iptal edilmis siparislerde durum degistirilemez.";
+            return false;
+        }
+
+        message = string.Empty;
+        return true;
+    }
 
     private static string RegexEscape(string value) => global::System.Text.RegularExpressions.Regex.Escape(value);
 
