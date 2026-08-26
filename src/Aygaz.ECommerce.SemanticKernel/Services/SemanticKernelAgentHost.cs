@@ -43,6 +43,9 @@ public sealed class SemanticKernelAgentHost
 
         var customerService = new ScopedCustomerServiceAccessor(scopeFactory);
         CustomerAgentRegistration.Register(registrar, customerService);
+
+        var orderService = new ScopedOrderServiceAccessor(scopeFactory);
+        OrderAgentRegistration.Register(registrar, orderService);
     }
 
     public SemanticKernelOptions Options { get; }
@@ -59,4 +62,7 @@ public sealed class SemanticKernelAgentHost
 
     public ChatCompletionAgent CustomerAgent =>
         Registry.GetAgent(CustomerAgentRegistration.AgentName);
+
+    public ChatCompletionAgent OrderAgent =>
+        Registry.GetAgent(OrderAgentRegistration.AgentName);
 }

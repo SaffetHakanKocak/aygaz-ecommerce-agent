@@ -8,8 +8,9 @@ Kontrollü C# servisleriyle genişletilen yerel bir e-ticaret Agentic AI gelişt
 - C# console application + ASP.NET Core Web API
 - Ollama ve `qwen3:4b-instruct`
 - Ollama embedding modeli `nomic-embed-text` (local RAG için)
-- Entity Framework Core 9
-- SQLite
+- Dapper
+- MongoDB Driver
+- MongoDB, SQLite veya SQL Server
 - xUnit
 
 Qwen3 4B Instruct, görece hafif olması ve native tool calling desteği nedeniyle seçildi. Bu makinedeki düşük kapasiteli GPU'da Ollama backend hatasını önlemek için `GpuLayers` değeri `0` olarak ayarlanmış, inference CPU üzerinde doğrulanmıştır.
@@ -29,13 +30,47 @@ ollama pull qwen3:4b-instruct
 ollama pull nomic-embed-text
 ```
 
-Repository kökünde **Web Chat UI** (ana demo yolu):
+Repository kökünde **Semantic Kernel Web Chat UI** (ana demo yolu):
 
 ```powershell
-dotnet run --project .\src\Aygaz.ECommerce.Web\Aygaz.ECommerce.Web.csproj
+dotnet run --project .\src\Aygaz.ECommerce.SemanticKernel.Web\Aygaz.ECommerce.SemanticKernel.Web.csproj
 ```
 
-Tarayıcı: **http://localhost:5280**
+Tarayıcı: **http://localhost:5190**
+
+MongoDB dummy verisini yalnızca ilk kurulumda veya veri yenilemek istediğinizde açıkça seed edin:
+
+```powershell
+dotnet run --project .\src\Aygaz.ECommerce.SemanticKernel.Web\Aygaz.ECommerce.SemanticKernel.Web.csproj -- --seed-mongodb
+```
+
+Normal Web başlangıcı MongoDB'ye seed yazmaz. MongoDB'nin `localhost:27017` üzerinde çalışıyor olması ve `ollama pull qwen3:1.7b` komutuyla modelin hazır olması gerekir.
+
+Veri katmanı `DataAccess:Provider` ile seçilir. Değer verilmezse `MongoDb` kullanılır. SQLite veya SQL Server için override örneği:
+
+```json
+{
+  "DataAccess": {
+    "Provider": "Sqlite",
+    "Sqlite": {
+      "ConnectionString": "Data Source=aygaz-ecommerce.db"
+    }
+  }
+}
+```
+
+```json
+{
+  "DataAccess": {
+    "Provider": "SqlServer",
+    "SqlServer": {
+      "ConnectionString": "Server=.;Database=AygazECommerce;Trusted_Connection=True;TrustServerCertificate=True"
+    }
+  }
+}
+```
+
+Web uygulamasında sağlayıcı varsayılanı yerel Ollama'dır. Groq veya OpenAI kullanılacaksa `SemanticKernel:Provider`, model ve endpoint ayarlanmalı; ilgili API anahtarı (`GROQ_API_KEY` veya `OPENAI_API_KEY`) süreç ortamına verilmelidir.
 
 Alternatif olarak console uygulaması:
 
@@ -157,7 +192,8 @@ User → Domain Guardrail → Ollama Agent
                               ↓
                get_latest_customer_order
                               ↓
-              IOrderService → EF Core → SQLite
+              IOrderService → IECommerceDataAccess
+                            → MongoDB veya Dapper SQL
                               ↓
                   role=tool minimum JSON
                               ↓
@@ -176,7 +212,8 @@ User → Domain Guardrail → Ollama Agent
                get_product_inventory veya
                 get_total_product_stock
                               ↓
-          IInventoryService → EF Core → SQLite
+          IInventoryService → IECommerceDataAccess
+                            → MongoDB veya Dapper SQL
                               ↓
                   role=tool minimum JSON
                               ↓
@@ -213,7 +250,7 @@ User → search_customers_by_name → Customer ID
 
 Assistant'ın `tool_calls` mesajı ve ardından `role=tool` sonucu doğru sırayla conversation history'ye eklenir. Tool çağrısı kalmayana kadar loop devam eder. Customer → Order, Product → Inventory, Customer → Sales ve Customer → Order → Document zincirlerini C# seçmez; Ollama ilk lookup sonucundaki ID'yi veya bağlamı gördükten sonra sonraki tool'u native olarak seçer. Iteration, bir yanıttaki tool sayısı, sonuç limitleri ve saklanan tamamlanmış conversation turn sayısı yapılandırmayla sınırlandırılır.
 
-LLM'e EF entity, OrderItem veya tam DTO verilmez. Sales tool'ları ham sipariş satırları yerine C#/EF Core tarafından hesaplanmış `SUM`, `COUNT`, `AVG` ve ürün aggregate sonuçlarını döndürür; `Cancelled` siparişler sorgu tabanında dışlanır. Analitik para alanları `Commerce:CurrencyCode` üzerinden açıkça `TRY` taşır. Sentetik analiz referans tarihi `2026-03-06` olduğundan son 30 gün dahil `2026-02-05..2026-03-06` aralığıdır. Tool logları yalnız ad, güvenli argument özeti ve `Success | NotFound | Rejected` durumunu gösterir; isim sorguları ve müşteri ID'leri redakte edilir, sonuç payload'ı yazılmaz.
+LLM'e entity, OrderItem veya tam DTO verilmez. Sales tool'ları ham sipariş satırları yerine data-access katmanında hesaplanmış `SUM`, `COUNT`, `AVG` ve ürün aggregate sonuçlarını döndürür; `Cancelled` siparişler sorgu tabanında dışlanır. Analitik para alanları `Commerce:CurrencyCode` üzerinden açıkça `TRY` taşır. Sentetik analiz referans tarihi `2026-03-06` olduğundan son 30 gün dahil `2026-02-05..2026-03-06` aralığıdır. Tool logları yalnız ad, güvenli argument özeti ve `Success | NotFound | Rejected` durumunu gösterir; isim sorguları ve müşteri ID'leri redakte edilir, sonuç payload'ı yazılmaz.
 
 Örnek sorgular:
 
@@ -328,9 +365,10 @@ Chat UI vanilla HTML/CSS/JS ile gelir; örnek prompt butonları, loading indicat
 
 ## Customer, Order, Product, Inventory ve Sales database
 
-- Database: SQLite
-- Dosya: repository kökündeki `aygaz-ecommerce-v4.db` (yukarıdaki komut kökten çalıştırıldığında)
-- Şema: `Customer`, `CustomerOrder`, `OrderItem`, `Product`, `InventoryRecord`
+- Varsayılan database: MongoDB (`DataAccess:Provider` verilmezse)
+- İlişkisel override: SQLite veya SQL Server, Dapper üzerinden
+- SQLite dosyası: repository kökündeki `aygaz-ecommerce.db` veya override edilen bağlantı dizesindeki dosya
+- Şema/collection: `Customer`, `CustomerOrder`, `OrderItem`, `Product`, `InventoryRecord` karşılığı tablolar veya Mongo collection'ları
 - İlişkiler: Customer 1 → * Orders; CustomerOrder 1 → * OrderItems; Product 1 → * OrderItems ve InventoryRecords
 - Kısıtlar: zorunlu FK'ler, unique case-insensitive OrderNumber/SKU, unique Order+Product ve Product+Location, decimal precision ve pozitif/negatif olmayan eşikler
 - Veri: 12 müşteri, 24 sipariş, 48 order item, 12 ürün ve 16 inventory kaydı; tamamı deterministik ve sentetik
@@ -342,9 +380,9 @@ Chat UI vanilla HTML/CSS/JS ile gelir; örnek prompt butonları, loading indicat
 - Seed; yüksek, düşük ve sıfır stok, çoklu/tek lokasyon, inventory kayıtsız ürün ve inactive ürün senaryolarını içerir
 - Satış analitiği yalnız hesaplanmış özet DTO'ları döndürür; ham OrderItem/entity graph dışarı çıkmaz
 
-Database dosyası ile SQLite WAL/journal yan dosyaları Git tarafından ignore edilir. Beş seed grubu ayrı missing-only kontrollerle idempotent çalışır; tekrar başlangıç duplicate üretmez.
+Database dosyası ile SQLite WAL/journal yan dosyaları Git tarafından ignore edilir. Mongo dummy seed yalnızca `--seed-mongodb` ile manuel çalışır ve sabit anahtarlar üzerinden upsert yaptığı için tekrar çalıştırıldığında duplicate üretmez. Normal startup MongoDB tarafında yalnız index/setup işlemlerini yapar.
 
-Proje hâlâ `EnsureCreatedAsync` kullandığından mevcut şemaları otomatik yükseltmez. Aşama 7, güvenli sentetik MVP stratejisi olarak yeni versioned `aygaz-ecommerce-v4.db` dosyasını kullanır; v1-v3 development DB dosyaları sessizce silinmez veya değiştirilmez. Production şema değişiklikleri ileride EF Core migrations ile yönetilmelidir.
+İlişkisel provider seçildiğinde Dapper initializer tablo şemasını `CREATE TABLE IF NOT EXISTS` veya SQL Server `IF OBJECT_ID(...) IS NULL` kontrolleriyle hazırlar. Mevcut şemalar otomatik migrate edilmez; production şema değişiklikleri ayrı migration/deployment süreciyle yönetilmelidir.
 
 Bağlantı dizesi, Ollama ayarları, `Commerce` currency/tarih/limitleri ve `DomainGuardrail` policy'si `src/Aygaz.ECommerce.Agent/appsettings.json` içinden yönetilir.
 
@@ -356,7 +394,7 @@ dotnet build .\Aygaz.ECommerce.Agent.sln --no-restore
 dotnet test .\Aygaz.ECommerce.Agent.sln --no-build --no-restore
 ```
 
-403 automated test; gerçek SQLite in-memory bağlantısıyla seed/ilişki/analitik hesaplarını, exact 14-tool allow-list'ini, document chunking/retrieval, Web API validation/guardrail/session davranışını ve fail-closed guardrail'i kapsar. Automated testler local Ollama'ya bağımlı değildir.
+Automated testler; gerçek SQLite in-memory bağlantısıyla Dapper contract davranışını, Mongo provider seçimini, Mongo index/upsert seed sözleşmesini, exact 14-tool allow-list'ini, document chunking/retrieval, Web API validation/guardrail/session davranışını ve fail-closed guardrail'i kapsar. Automated testler local Ollama'ya bağımlı değildir.
 
 ## Roadmap
 

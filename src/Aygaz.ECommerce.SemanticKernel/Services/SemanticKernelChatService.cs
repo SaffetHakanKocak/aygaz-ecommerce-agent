@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Aygaz.ECommerce.SemanticKernel.Agents;
 using Aygaz.ECommerce.SemanticKernel.Guardrails;
 using Aygaz.ECommerce.SemanticKernel.Capabilities;
+using Microsoft.SemanticKernel.Agents;
 using Microsoft.SemanticKernel.ChatCompletion;
 
 namespace Aygaz.ECommerce.SemanticKernel.Services;
@@ -43,11 +44,45 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
                 FastPathUsed: true);
         }
 
+        // Deterministic in-domain company-info / unsupported capabilities — no LLM needed.
+        if (AygazCompanyInfoResolver.TryResolve(normalizedMessage, out AygazCapability companyCapability))
+        {
+            stopwatch.Stop();
+            return CreateBlockedResult(
+                UnsupportedCapabilityResponse,
+                new AygazDomainClassificationResult(
+                    DomainDecision.Allowed,
+                    companyCapability,
+                    "aygaz_company_info_fast_path",
+                    stopwatch.Elapsed,
+                    0),
+                companyCapability,
+                stopwatch.ElapsedMilliseconds);
+        }
+
+        // Global bulk must not consume LLM or be rewritten by history.
+        if (OrderBulkRequestDetector.IsGlobalBulk(normalizedMessage))
+        {
+            stopwatch.Stop();
+            return CreateBlockedResult(
+                BulkOrderListUnsupportedResponse,
+                new AygazDomainClassificationResult(
+                    DomainDecision.Allowed,
+                    AygazCapability.Order,
+                    "global_order_bulk_fast_path",
+                    stopwatch.Elapsed,
+                    0),
+                AygazCapability.Order,
+                stopwatch.ElapsedMilliseconds);
+        }
+
         AygazDomainClassificationResult guardrail = await _host.Guardrail.EvaluateAsync(
             normalizedMessage,
             conversationHistory,
             cancellationToken);
 
+        guardrail = ApplyCompanyInfoOverride(guardrail, normalizedMessage);
+        guardrail = ApplyExplicitIntentOverride(guardrail, normalizedMessage);
         guardrail = ApplyFallbackWhenNeeded(guardrail, normalizedMessage, conversationHistory);
 
         if (guardrail.Decision == DomainDecision.OutOfScope)
@@ -71,6 +106,18 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
         }
 
         AygazCapability capability = guardrail.Capability;
+
+        // Global bulk is never rewritten by prior customer/order history.
+        if (OrderBulkRequestDetector.IsGlobalBulk(normalizedMessage))
+        {
+            stopwatch.Stop();
+            return CreateBlockedResult(
+                BulkOrderListUnsupportedResponse,
+                guardrail with { Capability = AygazCapability.Order },
+                AygazCapability.Order,
+                stopwatch.ElapsedMilliseconds);
+        }
+
         if (capability == AygazCapability.Customer
             && IsBulkCustomerListRequest(normalizedMessage)
             && !IsCityScopedCustomerRequest(normalizedMessage))
@@ -83,7 +130,31 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
                 stopwatch.ElapsedMilliseconds);
         }
 
-        if (capability != AygazCapability.Customer)
+        if (capability == AygazCapability.Order && IsBulkOrderListRequest(normalizedMessage))
+        {
+            stopwatch.Stop();
+            return CreateBlockedResult(
+                BulkOrderListUnsupportedResponse,
+                guardrail,
+                capability,
+                stopwatch.ElapsedMilliseconds);
+        }
+
+        if (capability is AygazCapability.ProductInventory
+            or AygazCapability.Sales
+            or AygazCapability.Policy
+            or AygazCapability.Unknown)
+        {
+            stopwatch.Stop();
+            return CreateBlockedResult(
+                UnsupportedCapabilityResponse,
+                guardrail,
+                capability,
+                stopwatch.ElapsedMilliseconds);
+        }
+
+        ChatCompletionAgent? agent = ResolveAgent(capability);
+        if (agent is null)
         {
             stopwatch.Stop();
             return CreateBlockedResult(
@@ -95,7 +166,7 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
 
         _host.Telemetry.Reset();
         var agentResponse = await _host.Runner.InvokeAsync(
-            _host.CustomerAgent,
+            agent,
             normalizedMessage,
             conversationHistory,
             cancellationToken);
@@ -104,8 +175,8 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
         return new SemanticKernelChatResult(
             agentResponse.Content,
             DomainDecision.Allowed,
-            AygazCapability.Customer,
-            CustomerAgentRegistration.AgentName,
+            capability,
+            agent.Name,
             stopwatch.ElapsedMilliseconds,
             BusinessAgentInvoked: true,
             BusinessFunctionInvoked: _host.Telemetry.FunctionInvocationCount > 0,
@@ -114,6 +185,24 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
             FunctionInvocationCount: _host.Telemetry.FunctionInvocationCount,
             InvokedFunctionName: _host.Telemetry.LastFunctionName,
             FastPathUsed: _host.Telemetry.Terminated);
+    }
+
+    private ChatCompletionAgent? ResolveAgent(AygazCapability capability)
+    {
+        string? routeKey = capability switch
+        {
+            AygazCapability.Customer => CustomerAgentRegistration.RouteKey,
+            AygazCapability.Order => OrderAgentRegistration.RouteKey,
+            _ => null
+        };
+
+        if (routeKey is null)
+        {
+            return null;
+        }
+
+        string? agentName = _host.Router.ResolveAgentName(routeKey);
+        return agentName is null ? null : _host.Registry.GetAgent(agentName);
     }
 
     private static SemanticKernelChatResult CreateBlockedResult(
@@ -143,9 +232,11 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
     internal const string BulkCustomerListUnsupportedResponse =
         "Toplu müşteri listeleme desteklenmiyor. Belirli bir müşteriyi adı, müşteri numarası veya e-posta adresiyle arayabilirsiniz.";
 
+    internal const string BulkOrderListUnsupportedResponse =
+        "Toplu sipariş listeleme desteklenmiyor. Belirli bir sipariş numarası veya müşteri numarasıyla sorgulama yapabilirsiniz.";
+
     private static bool IsBulkCustomerListRequest(string message)
     {
-        // Follow-up "tüm bilgilerini getir" is not a bulk listing request.
         if (CustomerFollowUpResolver.IsFollowUpPhrase(message))
         {
             return false;
@@ -158,8 +249,15 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
                || normalized.Contains("tum musterileri", StringComparison.Ordinal)
                || normalized.Contains("bütün müşterileri", StringComparison.Ordinal)
                || normalized.Contains("butun musterileri", StringComparison.Ordinal)
+               || normalized.Contains("tüm müşteri bilgilerini", StringComparison.Ordinal)
+               || normalized.Contains("tum musteri bilgilerini", StringComparison.Ordinal)
                || normalized.Contains("müşteri listesi", StringComparison.Ordinal)
                || normalized.Contains("musteri listesi", StringComparison.Ordinal);
+    }
+
+    private static bool IsBulkOrderListRequest(string message)
+    {
+        return OrderBulkRequestDetector.IsGlobalBulk(message);
     }
 
     private static bool IsCityScopedCustomerRequest(string message)
@@ -176,13 +274,114 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
                || normalized.Contains("yasayan musteri", StringComparison.Ordinal);
     }
 
+    private static AygazDomainClassificationResult ApplyCompanyInfoOverride(
+        AygazDomainClassificationResult result,
+        string message)
+    {
+        if (!AygazCompanyInfoResolver.TryResolve(message, out AygazCapability companyCapability))
+        {
+            return result;
+        }
+
+        return result with
+        {
+            Decision = DomainDecision.Allowed,
+            Capability = companyCapability,
+            Reason = "aygaz_company_info_override"
+        };
+    }
+
+    private static AygazDomainClassificationResult ApplyExplicitIntentOverride(
+        AygazDomainClassificationResult result,
+        string message)
+    {
+        string normalized = message.ToLowerInvariant();
+        if (IsExplicitOutOfScope(normalized))
+        {
+            return result;
+        }
+
+        // Company-info already applied; do not let Customer markers steal it.
+        if (AygazCompanyInfoResolver.TryResolve(message, out _))
+        {
+            return result;
+        }
+
+        if (!ExplicitCapabilityResolver.TryResolve(message, out AygazCapability explicitCapability))
+        {
+            return result;
+        }
+
+        // Company resolver is also invoked inside TryResolve; Unknown/Sales already handled.
+        if (explicitCapability is AygazCapability.Unknown
+            or AygazCapability.Sales
+            or AygazCapability.Policy
+            or AygazCapability.ProductInventory)
+        {
+            return result with
+            {
+                Decision = DomainDecision.Allowed,
+                Capability = explicitCapability,
+                Reason = "explicit_capability_override"
+            };
+        }
+
+        if (result.Decision is DomainDecision.OutOfScope or DomainDecision.Ambiguous)
+        {
+            return result with
+            {
+                Decision = DomainDecision.Allowed,
+                Capability = explicitCapability,
+                Reason = "explicit_intent_override"
+            };
+        }
+
+        if (result.Capability != explicitCapability)
+        {
+            return result with
+            {
+                Capability = explicitCapability,
+                Reason = "explicit_intent_override"
+            };
+        }
+
+        return result;
+    }
+
     private static AygazDomainClassificationResult ApplyFallbackWhenNeeded(
         AygazDomainClassificationResult result,
         string message,
         ChatHistory? history)
     {
+        if (AygazCompanyInfoResolver.TryResolve(message, out AygazCapability companyCapability))
+        {
+            return result with
+            {
+                Decision = DomainDecision.Allowed,
+                Capability = companyCapability,
+                Reason = "fallback_aygaz_company_info"
+            };
+        }
+
+        if (ExplicitCapabilityResolver.TryResolve(message, out _))
+        {
+            return result;
+        }
+
+        if (OrderBulkRequestDetector.IsGlobalBulk(message))
+        {
+            return result with
+            {
+                Decision = DomainDecision.Allowed,
+                Capability = AygazCapability.Order,
+                Reason = "fallback_global_order_bulk"
+            };
+        }
+
         if (result.Decision is not (DomainDecision.Ambiguous or DomainDecision.OutOfScope))
         {
+            // History must not override an already Allowed non-referential classification
+            // into Customer/Order when the current message is an explicit new topic.
             return result;
         }
 
@@ -197,18 +396,52 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
             };
         }
 
-        // Pronoun / omitted-identity follow-ups with prior customer in session history.
-        if (CustomerFollowUpResolver.IsCustomerFollowUp(history, message))
+        // History only for truly referential messages.
+        if (ReferentialMessageDetector.IsReferentialFollowUp(message))
+        {
+            if (OrderFollowUpResolver.IsOrderFollowUp(history, message))
+            {
+                return result with
+                {
+                    Decision = DomainDecision.Allowed,
+                    Capability = AygazCapability.Order,
+                    Reason = "fallback_order_follow_up"
+                };
+            }
+
+            if (CustomerFollowUpResolver.IsCustomerFollowUp(history, message))
+            {
+                return result with
+                {
+                    Decision = DomainDecision.Allowed,
+                    Capability = AygazCapability.Customer,
+                    Reason = "fallback_customer_follow_up"
+                };
+            }
+
+            // Referential customer-scoped order list with prior customer context.
+            if (OrderBulkRequestDetector.IsReferentialCustomerScope(message)
+                && CustomerFollowUpResolver.HistoryHasCustomerReference(history))
+            {
+                return result with
+                {
+                    Decision = DomainDecision.Allowed,
+                    Capability = AygazCapability.Order,
+                    Reason = "fallback_referential_customer_orders"
+                };
+            }
+        }
+
+        if (result.Decision == DomainDecision.Ambiguous && LooksLikeOrderIntent(normalized))
         {
             return result with
             {
                 Decision = DomainDecision.Allowed,
-                Capability = AygazCapability.Customer,
-                Reason = "fallback_customer_follow_up"
+                Capability = AygazCapability.Order,
+                Reason = "fallback_order"
             };
         }
 
-        // Ambiguous-only: standalone customer-looking phrases without history.
         if (result.Decision == DomainDecision.Ambiguous && LooksLikeCustomerIntent(normalized))
         {
             return result with
@@ -228,6 +461,8 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
                || normalized.Contains("vodafone", StringComparison.Ordinal)
                || normalized.Contains("arçelik", StringComparison.Ordinal)
                || normalized.Contains("arcelik", StringComparison.Ordinal)
+               || normalized.Contains("trendyol", StringComparison.Ordinal)
+               || normalized.Contains("amazon", StringComparison.Ordinal)
                || normalized.Contains("bjk", StringComparison.Ordinal)
                || normalized.Contains("başkenti", StringComparison.Ordinal)
                || normalized.Contains("baskenti", StringComparison.Ordinal)
@@ -235,11 +470,22 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
                || normalized.Contains("maci", StringComparison.Ordinal);
     }
 
+    private static bool LooksLikeOrderIntent(string normalized)
+    {
+        return normalized.Contains("sipariş", StringComparison.Ordinal)
+               || normalized.Contains("siparis", StringComparison.Ordinal)
+               || normalized.Contains("ayg-demo-", StringComparison.Ordinal);
+    }
+
     private static bool LooksLikeCustomerIntent(string normalized)
     {
+        if (normalized.Contains("aygaz", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
         return normalized.Contains("müşteri", StringComparison.Ordinal)
                || normalized.Contains("musteri", StringComparison.Ordinal)
-               || normalized.Contains("bilgi", StringComparison.Ordinal)
                || normalized.Contains("telefon", StringComparison.Ordinal)
                || normalized.Contains("e-posta", StringComparison.Ordinal)
                || normalized.Contains("eposta", StringComparison.Ordinal)

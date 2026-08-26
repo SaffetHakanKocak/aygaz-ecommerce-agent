@@ -10,7 +10,7 @@ using Aygaz.AgentFramework.Kernel;
 using Aygaz.AgentFramework.Observability;
 using Aygaz.AgentFramework.Routing;
 using Aygaz.ECommerce.Agent.Configuration;
-using Aygaz.ECommerce.Agent.Data;
+using Aygaz.ECommerce.Agent.DataAccess;
 using Aygaz.ECommerce.Agent.Services;
 using Aygaz.ECommerce.SemanticKernel.Agents;
 using Aygaz.ECommerce.SemanticKernel.Guardrails;
@@ -40,8 +40,17 @@ internal static class Program
 
         await using (AsyncServiceScope initScope = host.Services.CreateAsyncScope())
         {
-            var initializer = initScope.ServiceProvider.GetRequiredService<DatabaseInitializer>();
-            await initializer.InitializeAsync();
+            var initializer = initScope.ServiceProvider.GetService<IRelationalDatabaseInitializer>();
+            if (initializer is not null)
+            {
+                await initializer.InitializeAsync();
+            }
+
+            var mongoInitializer = initScope.ServiceProvider.GetService<IMongoDatabaseInitializer>();
+            if (mongoInitializer is not null)
+            {
+                await mongoInitializer.InitializeAsync();
+            }
         }
 
         string providerValue = hostBuilder.Configuration["SemanticKernel:Provider"] ?? "Ollama";

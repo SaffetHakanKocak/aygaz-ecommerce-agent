@@ -8,8 +8,11 @@ public interface IChatSessionStore
     string ResolveSessionId(string? sessionId);
     ChatHistory GetHistory(string sessionId);
     void AppendTurn(string sessionId, string userMessage, string assistantMessage);
-
     bool ClearSession(string sessionId);
+    Task<T> ExecuteExclusiveAsync<T>(
+        string sessionId,
+        Func<CancellationToken, Task<T>> action,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class InMemoryChatSessionStore : IChatSessionStore
@@ -77,8 +80,31 @@ public sealed class InMemoryChatSessionStore : IChatSessionStore
         return _sessions.TryRemove(sessionId.Trim(), out _);
     }
 
+    public async Task<T> ExecuteExclusiveAsync<T>(
+        string sessionId,
+        Func<CancellationToken, Task<T>> action,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        ArgumentNullException.ThrowIfNull(action);
+
+        string key = sessionId.Trim();
+        SessionState state = _sessions.GetOrAdd(key, _ => new SessionState());
+        await state.Gate.WaitAsync(cancellationToken);
+
+        try
+        {
+            return await action(cancellationToken);
+        }
+        finally
+        {
+            state.Gate.Release();
+        }
+    }
+
     private sealed class SessionState
     {
+        public SemaphoreSlim Gate { get; } = new(1, 1);
         public object SyncRoot { get; } = new();
         public List<(string Role, string Content)> Messages { get; } = [];
     }

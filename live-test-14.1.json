@@ -1,0 +1,72 @@
+﻿[
+    {
+        "Test":  "1 customer orders",
+        "Pass":  true,
+        "Decision":  "Allowed",
+        "Cap":  "Order",
+        "Agent":  "OrderAgent",
+        "Fn":  "get_customer_orders",
+        "Ms":  1632,
+        "Msg":  "1 numaralı müşterinin siparişleri:\r\n- AYG-DEMO-1004 — Hazırlanıyor\r\n- AYG-DEMO-1003 — Kargoya verildi\r\n- AYG-DEMO-1002 — İptal edildi\r\n- AYG-DEMO-1001"
+    },
+    {
+        "Test":  "2 bulk blocked",
+        "Pass":  true,
+        "Decision":  "Allowed",
+        "Cap":  "Order",
+        "Agent":  null,
+        "Fn":  null,
+        "Ms":  547,
+        "Msg":  "Toplu sipariş listeleme desteklenmiyor. Belirli bir sipariş numarası veya müşteri numarasıyla sorgulama yapabilirsiniz."
+    },
+    {
+        "Test":  "3a ahmet customer",
+        "Pass":  true,
+        "Decision":  "Allowed",
+        "Cap":  "Customer",
+        "Agent":  "CustomerAgent",
+        "Fn":  "search_customers_by_name",
+        "Ms":  1111,
+        "Msg":  "Müşteri Bilgileri\r\nMüşteri No: 1\r\nAd Soyad: Ahmet Yılmaz\r\nE-posta: ahmet.yilmaz@"
+    },
+    {
+        "Test":  "3b order first try",
+        "Pass":  true,
+        "Decision":  "Allowed",
+        "Cap":  "Order",
+        "Agent":  "OrderAgent",
+        "Fn":  "get_order_by_number",
+        "Ms":  1071,
+        "Msg":  "Sipariş Bilgileri\r\nSipariş No: AYG-DEMO-1004\r\nTarih: 22.02.2026\r\nDurum: Hazırlanıyor\r\nToplam Tutar: 910,75 TL"
+    },
+    {
+        "Test":  "4 order follow-up",
+        "Pass":  true,
+        "Decision":  "Allowed",
+        "Cap":  "Order",
+        "Agent":  "OrderAgent",
+        "Fn":  null,
+        "Ms":  1918,
+        "Msg":  "Siparişin durumu: Hazırlanıyor."
+    },
+    {
+        "Test":  "5 mehmet first try",
+        "Pass":  true,
+        "Decision":  "Allowed",
+        "Cap":  "Customer",
+        "Agent":  "CustomerAgent",
+        "Fn":  "search_customers_by_name",
+        "Ms":  997,
+        "Msg":  "Mehmet Kaya\u0027ın telefon numarası: 0532 000 00 02"
+    },
+    {
+        "Test":  "6 mehmet follow-up",
+        "Pass":  true,
+        "Decision":  "Allowed",
+        "Cap":  "Customer",
+        "Agent":  "CustomerAgent",
+        "Fn":  "search_customers_by_name",
+        "Ms":  1661,
+        "Msg":  "Mehmet Kaya\u0027ın telefon numarası: 0532 000 00 02"
+    }
+]

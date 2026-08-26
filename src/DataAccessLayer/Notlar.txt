@@ -1,0 +1,22 @@
+Uygulama servisleri yalnızca `IECommerceDataAccess` sözleşmesini bilir.
+
+- MongoDB: `MongoDataAccess` ve MongoDB Driver
+- SQLite: `DapperSqlDataAccess` ve `Microsoft.Data.Sqlite`
+- SQL Server: `DapperSqlDataAccess` ve `Microsoft.Data.SqlClient`
+
+`DataAccess:Provider` merkezi DI extension'ında seçilir. Değer verilmezse
+`MongoDb` varsayılandır. Yalnızca seçilen sağlayıcının sözleşme implementasyonu
+kaydedilir; uygulama `GetCustomer` gibi operasyonlarda provider bilmez.
+
+Mongo startup sırasında yalnız index/setup işlemleri `IMongoDatabaseInitializer`
+üzerinden çalışır; dummy veri yazılmaz. Mongo dummy seed `--seed-mongodb`
+açıkça verilerek çalıştırılır ve sabit anahtarlar üzerinde upsert kullandığı
+için idempotenttir.
+
+Testler:
+
+- SQLite için Dapper contract testi gerçek in-memory bağlantıyla çalışır.
+- DI testleri provider boşken MongoDB, `Sqlite` seçiliyken Dapper çözümlendiğini
+  doğrular.
+- Mongo seed ve index sözleşmesi gerçek MongoDB gerektirmeden model seviyesinde
+  doğrulanır; canlı MongoDB smoke/idempotency kontrolü manuel opt-in kabul edilir.

@@ -1,22 +1,10 @@
-using System.Linq.Expressions;
-using Aygaz.ECommerce.Agent.Data;
-using Aygaz.ECommerce.Agent.Entities;
+using Aygaz.ECommerce.Agent.DataAccess;
 using Aygaz.ECommerce.Agent.Models;
-using Microsoft.EntityFrameworkCore;
 
 namespace Aygaz.ECommerce.Agent.Services;
 
-public sealed class ProductService(ECommerceDbContext dbContext) : IProductService
+public sealed class ProductService(IECommerceDataAccess dataAccess) : IProductService
 {
-    private static readonly Expression<Func<Product, ProductDto>> ToDto = product =>
-        new ProductDto(
-            product.Id,
-            product.Sku,
-            product.Name,
-            product.Category,
-            product.UnitPrice,
-            product.IsActive);
-
     public Task<ProductDto?> GetProductByIdAsync(
         int id,
         CancellationToken cancellationToken = default)
@@ -26,11 +14,7 @@ public sealed class ProductService(ECommerceDbContext dbContext) : IProductServi
             return Task.FromResult<ProductDto?>(null);
         }
 
-        return dbContext.Products
-            .AsNoTracking()
-            .Where(product => product.Id == id)
-            .Select(ToDto)
-            .SingleOrDefaultAsync(cancellationToken);
+        return dataAccess.GetProductByIdAsync(id, cancellationToken);
     }
 
     public Task<ProductDto?> GetProductBySkuAsync(
@@ -44,11 +28,7 @@ public sealed class ProductService(ECommerceDbContext dbContext) : IProductServi
 
         string normalizedSku = sku.Trim();
 
-        return dbContext.Products
-            .AsNoTracking()
-            .Where(product => product.Sku == normalizedSku)
-            .Select(ToDto)
-            .SingleOrDefaultAsync(cancellationToken);
+        return dataAccess.GetProductBySkuAsync(normalizedSku, cancellationToken);
     }
 
     public async Task<IReadOnlyList<ProductDto>> SearchProductsAsync(
@@ -61,26 +41,6 @@ public sealed class ProductService(ECommerceDbContext dbContext) : IProductServi
             return Array.Empty<ProductDto>();
         }
 
-        string escapedQuery = EscapeLikePattern(query.Trim());
-        string pattern = $"%{escapedQuery}%";
-
-        return await dbContext.Products
-            .AsNoTracking()
-            .Where(product =>
-                EF.Functions.Like(product.Name, pattern, "\\")
-                || EF.Functions.Like(product.Sku, pattern, "\\")
-                || EF.Functions.Like(product.Category, pattern, "\\"))
-            .OrderBy(product => product.Id)
-            .Take(maxResults)
-            .Select(ToDto)
-            .ToListAsync(cancellationToken);
-    }
-
-    private static string EscapeLikePattern(string value)
-    {
-        return value
-            .Replace("\\", "\\\\", StringComparison.Ordinal)
-            .Replace("%", "\\%", StringComparison.Ordinal)
-            .Replace("_", "\\_", StringComparison.Ordinal);
+        return await dataAccess.SearchProductsAsync(query.Trim(), maxResults, cancellationToken);
     }
 }

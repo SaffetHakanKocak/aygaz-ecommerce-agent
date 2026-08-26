@@ -1,7 +1,10 @@
 #pragma warning disable SKEXP0070
 
 using Aygaz.AgentFramework.Configuration;
+using Aygaz.AgentFramework.Resilience;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion;
 
 namespace Aygaz.AgentFramework.Kernel;
 
@@ -51,7 +54,28 @@ public sealed class SemanticKernelFactory : IKernelFactory
                     $"Unsupported SemanticKernel provider '{_options.Provider}'.");
         }
 
-        return builder.Build();
+        Microsoft.SemanticKernel.Kernel kernel = builder.Build();
+
+        if (_options.Provider == SemanticKernelProvider.Groq)
+        {
+            kernel = WrapWithResilientChatCompletion(kernel);
+        }
+
+        return kernel;
+    }
+
+    private static Microsoft.SemanticKernel.Kernel WrapWithResilientChatCompletion(Microsoft.SemanticKernel.Kernel kernel)
+    {
+        IChatCompletionService inner = kernel.GetRequiredService<IChatCompletionService>();
+        if (inner is ResilientChatCompletionService)
+        {
+            return kernel;
+        }
+
+        var resilient = new ResilientChatCompletionService(inner, SemanticKernelProvider.Groq);
+        var resilientBuilder = Microsoft.SemanticKernel.Kernel.CreateBuilder();
+        resilientBuilder.Services.AddSingleton<IChatCompletionService>(resilient);
+        return resilientBuilder.Build();
     }
 
     private void RegisterOllama(IKernelBuilder builder)

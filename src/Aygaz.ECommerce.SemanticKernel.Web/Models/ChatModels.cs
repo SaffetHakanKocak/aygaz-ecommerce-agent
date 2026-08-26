@@ -22,4 +22,4 @@ public sealed record ClearSessionRequest(string? SessionId);
 
 public sealed record ClearSessionResponse(bool Success, string SessionId);
 
-public sealed record ApiErrorResponse(bool Success, string Message);
+public sealed record ApiErrorResponse(bool Success, string Message, string? ErrorCode = null);

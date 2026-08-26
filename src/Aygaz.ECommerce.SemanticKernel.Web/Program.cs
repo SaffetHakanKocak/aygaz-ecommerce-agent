@@ -1,5 +1,5 @@
 using Aygaz.ECommerce.Agent.Configuration;
-using Aygaz.ECommerce.Agent.Data;
+using Aygaz.ECommerce.Agent.DataAccess;
 using Aygaz.ECommerce.SemanticKernel.Configuration;
 using Aygaz.ECommerce.SemanticKernel.Web.Configuration;
 using Aygaz.ECommerce.SemanticKernel.Web.Services;
@@ -27,6 +27,22 @@ public partial class Program
         WebApplication app = builder.Build();
 
         await InitializeDatabaseAsync(app.Services);
+        await InitializeMongoDatabaseAsync(app.Services);
+
+        if (args.Any(argument => argument.Equals(
+            "--seed-mongodb",
+            StringComparison.OrdinalIgnoreCase)))
+        {
+            if (app.Environment.IsProduction()
+                && !app.Configuration.GetValue<bool>("DataAccess:MongoDb:AllowProductionSeed"))
+            {
+                throw new InvalidOperationException(
+                    "Production MongoDB seed için DataAccess:MongoDb:AllowProductionSeed=true gereklidir.");
+            }
+
+            await SeedMongoDbAsync(app.Services);
+            return;
+        }
 
         app.UseDefaultFiles();
         app.UseStaticFiles();
@@ -45,10 +61,31 @@ public partial class Program
         await app.RunAsync();
     }
 
+    private static async Task SeedMongoDbAsync(IServiceProvider serviceProvider)
+    {
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+        MongoDummyDataSeeder seeder = scope.ServiceProvider.GetRequiredService<MongoDummyDataSeeder>();
+        await seeder.SeedAsync();
+        Console.WriteLine("MongoDB dummy verileri hazırlandı.");
+    }
+
     private static async Task InitializeDatabaseAsync(IServiceProvider serviceProvider)
     {
         await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
-        var initializer = scope.ServiceProvider.GetRequiredService<DatabaseInitializer>();
-        await initializer.InitializeAsync();
+        IRelationalDatabaseInitializer? initializer = scope.ServiceProvider.GetService<IRelationalDatabaseInitializer>();
+        if (initializer is not null)
+        {
+            await initializer.InitializeAsync();
+        }
+    }
+
+    private static async Task InitializeMongoDatabaseAsync(IServiceProvider serviceProvider)
+    {
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+        IMongoDatabaseInitializer? initializer = scope.ServiceProvider.GetService<IMongoDatabaseInitializer>();
+        if (initializer is not null)
+        {
+            await initializer.InitializeAsync();
+        }
     }
 }

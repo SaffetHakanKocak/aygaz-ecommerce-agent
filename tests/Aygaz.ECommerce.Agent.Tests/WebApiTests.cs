@@ -9,8 +9,10 @@ using Aygaz.ECommerce.Web.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 namespace Aygaz.ECommerce.Agent.Tests;
 
@@ -166,13 +168,20 @@ public sealed class WebApiTests : IClassFixture<AygazWebApplicationFactory>
     }
 }
 
-public sealed class AygazWebApplicationFactory : WebApplicationFactory<Program>
+public sealed class AygazWebApplicationFactory : WebApplicationFactory<Aygaz.ECommerce.Web.Program>
 {
     public RecordingGuardedAgentService GuardedAgent { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+        builder.ConfigureLogging(logging => logging.ClearProviders());
+        builder.ConfigureAppConfiguration((_, configuration) =>
+            configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["DataAccess:Provider"] = "Sqlite",
+                ["DataAccess:Sqlite:ConnectionString"] = "Data Source=:memory:"
+            }));
 
         builder.ConfigureTestServices(services =>
         {

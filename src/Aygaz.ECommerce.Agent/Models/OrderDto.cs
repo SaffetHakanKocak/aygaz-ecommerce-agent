@@ -8,4 +8,10 @@ public sealed record OrderDto(
     int CustomerId,
     DateTime OrderDate,
     OrderStatus Status,
-    decimal TotalAmount);
+    decimal TotalAmount)
+{
+    public OrderDto()
+        : this(0, string.Empty, 0, default, Entities.OrderStatus.Pending, 0m)
+    {
+    }
+}

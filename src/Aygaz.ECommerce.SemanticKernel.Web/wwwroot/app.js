@@ -7,6 +7,7 @@ const loadingEl = document.getElementById("loading");
 const errorEl = document.getElementById("error");
 
 let sessionId = localStorage.getItem("aygazSkSessionId") || null;
+let isSending = false;
 
 function showError(message) {
   errorEl.textContent = message;
@@ -19,6 +20,7 @@ function hideError() {
 }
 
 function setLoading(isLoading) {
+  isSending = isLoading;
   loadingEl.classList.toggle("hidden", !isLoading);
   sendButtonEl.disabled = isLoading;
   inputEl.disabled = isLoading;
@@ -59,7 +61,37 @@ function formatMeta(payload) {
   return parts.join(" · ");
 }
 
+async function readJsonPayload(response) {
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return response.json();
+  }
+
+  const text = await response.text();
+  return {
+    success: false,
+    message: text || "İstek işlenirken bir hata oluştu."
+  };
+}
+
+function resolveUserMessage(payload, responseOk) {
+  if (responseOk) {
+    return payload.message;
+  }
+
+  if (payload?.errorCode === "AI_PROVIDER_TEMPORARILY_UNAVAILABLE") {
+    return payload.message
+      || "Yapay zekâ servisi şu anda yoğun. Lütfen birkaç saniye sonra tekrar deneyin.";
+  }
+
+  return payload?.message || "İstek işlenirken bir hata oluştu.";
+}
+
 async function sendMessage(message) {
+  if (isSending) {
+    return;
+  }
+
   hideError();
   appendMessage("user", message);
   setLoading(true);
@@ -71,9 +103,9 @@ async function sendMessage(message) {
       body: JSON.stringify({ message, sessionId })
     });
 
-    const payload = await response.json();
+    const payload = await readJsonPayload(response);
     if (!response.ok) {
-      throw new Error(payload.message || "İstek işlenirken bir hata oluştu.");
+      throw new Error(resolveUserMessage(payload, false));
     }
 
     sessionId = payload.sessionId;
@@ -89,6 +121,10 @@ async function sendMessage(message) {
 
 formEl.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (isSending) {
+    return;
+  }
+
   const message = inputEl.value.trim();
   if (!message) {
     return;
@@ -101,11 +137,19 @@ formEl.addEventListener("submit", async (event) => {
 inputEl.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
+    if (isSending) {
+      return;
+    }
+
     formEl.requestSubmit();
   }
 });
 
 clearButtonEl.addEventListener("click", async () => {
+  if (isSending) {
+    return;
+  }
+
   hideError();
   messagesEl.innerHTML = "";
 
@@ -122,7 +166,7 @@ clearButtonEl.addEventListener("click", async () => {
       body: JSON.stringify({ sessionId })
     });
 
-    const payload = await response.json();
+    const payload = await readJsonPayload(response);
     if (!response.ok) {
       throw new Error(payload.message || "Oturum temizlenemedi.");
     }

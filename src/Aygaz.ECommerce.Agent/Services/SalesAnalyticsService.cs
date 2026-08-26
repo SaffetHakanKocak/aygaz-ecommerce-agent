@@ -1,8 +1,6 @@
 using Aygaz.ECommerce.Agent.Configuration;
-using Aygaz.ECommerce.Agent.Data;
-using Aygaz.ECommerce.Agent.Entities;
+using Aygaz.ECommerce.Agent.DataAccess;
 using Aygaz.ECommerce.Agent.Models;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace Aygaz.ECommerce.Agent.Services;
@@ -12,17 +10,17 @@ public sealed class SalesAnalyticsService : ISalesAnalyticsService
     private const int AbsoluteMaximumAnalysisRangeDays = 366;
     private const int AbsoluteMaximumTopProducts = 10;
 
-    private readonly ECommerceDbContext dbContext;
+    private readonly IECommerceDataAccess dataAccess;
     private readonly CommerceOptions options;
 
     public SalesAnalyticsService(
-        ECommerceDbContext dbContext,
+        IECommerceDataAccess dataAccess,
         IOptions<CommerceOptions> commerceOptions)
     {
-        ArgumentNullException.ThrowIfNull(dbContext);
+        ArgumentNullException.ThrowIfNull(dataAccess);
         ArgumentNullException.ThrowIfNull(commerceOptions);
 
-        this.dbContext = dbContext;
+        this.dataAccess = dataAccess;
         options = commerceOptions.Value;
     }
 
@@ -33,28 +31,7 @@ public sealed class SalesAnalyticsService : ISalesAnalyticsService
     {
         ValidateDateRange(fromDate, toDate);
 
-        IQueryable<CustomerOrder> eligibleOrders = CreateEligibleOrdersQuery(
-            fromDate,
-            toDate);
-
-        int orderCount = await eligibleOrders.CountAsync(cancellationToken);
-        ItemAggregate? itemAggregate = await CreateItemAggregateQuery(eligibleOrders)
-            .SingleOrDefaultAsync(cancellationToken);
-
-        decimal totalRevenue = itemAggregate?.Revenue ?? 0m;
-        long itemsSold = itemAggregate?.Quantity ?? 0L;
-        decimal averageOrderValue = orderCount == 0
-            ? 0m
-            : Math.Round(
-                totalRevenue / orderCount,
-                2,
-                MidpointRounding.AwayFromZero);
-
-        return new SalesSummaryDto(
-            totalRevenue,
-            orderCount,
-            itemsSold,
-            averageOrderValue);
+        return await dataAccess.GetSalesSummaryAsync(fromDate, toDate, cancellationToken);
     }
 
     public async Task<IReadOnlyList<TopSellingProductDto>> GetTopSellingProductsAsync(
@@ -66,31 +43,11 @@ public sealed class SalesAnalyticsService : ISalesAnalyticsService
         ValidateDateRange(fromDate, toDate);
         ValidateLimit(limit);
 
-        IQueryable<OrderItem> eligibleItems = CreateEligibleOrdersQuery(
-                fromDate,
-                toDate)
-            .SelectMany(order => order.OrderItems);
-
-        List<TopSellingProductDto> productAggregates = await eligibleItems
-            .GroupBy(item => new
-            {
-                item.ProductId,
-                item.Product.Sku,
-                item.Product.Name
-            })
-            .Select(group => new TopSellingProductDto(
-                group.Key.Sku,
-                group.Key.Name,
-                group.Sum(item => (long)item.Quantity),
-                group.Sum(item => item.UnitPrice * item.Quantity)))
-            .ToListAsync(cancellationToken);
-
-        return productAggregates
-            .OrderByDescending(product => product.QuantitySold)
-            .ThenByDescending(product => product.Revenue)
-            .ThenBy(product => product.Sku, StringComparer.Ordinal)
-            .Take(limit)
-            .ToArray();
+        return await dataAccess.GetTopSellingProductsAsync(
+            fromDate,
+            toDate,
+            limit,
+            cancellationToken);
     }
 
     public async Task<CustomerPurchaseSummaryDto?> GetCustomerPurchaseSummaryAsync(
@@ -108,64 +65,11 @@ public sealed class SalesAnalyticsService : ISalesAnalyticsService
 
         ValidateDateRange(fromDate, toDate);
 
-        bool customerExists = await dbContext.Customers
-            .AsNoTracking()
-            .AnyAsync(customer => customer.Id == customerId, cancellationToken);
-
-        if (!customerExists)
-        {
-            return null;
-        }
-
-        IQueryable<CustomerOrder> eligibleOrders = CreateEligibleOrdersQuery(
-                fromDate,
-                toDate)
-            .Where(order => order.CustomerId == customerId);
-
-        int orderCount = await eligibleOrders.CountAsync(cancellationToken);
-        ItemAggregate? itemAggregate = await CreateItemAggregateQuery(eligibleOrders)
-            .SingleOrDefaultAsync(cancellationToken);
-
-        return new CustomerPurchaseSummaryDto(
-            orderCount,
-            itemAggregate?.Revenue ?? 0m,
-            itemAggregate?.Quantity ?? 0L);
-    }
-
-    private IQueryable<CustomerOrder> CreateEligibleOrdersQuery(
-        DateOnly fromDate,
-        DateOnly toDate)
-    {
-        DateTime fromDateTime = DateTime.SpecifyKind(
-            fromDate.ToDateTime(TimeOnly.MinValue),
-            DateTimeKind.Utc);
-
-        IQueryable<CustomerOrder> query = dbContext.CustomerOrders
-            .AsNoTracking()
-            .Where(order => order.Status != OrderStatus.Cancelled)
-            .Where(order => order.OrderDate >= fromDateTime);
-
-        if (toDate == DateOnly.MaxValue)
-        {
-            return query;
-        }
-
-        DateTime toDateExclusive = DateTime.SpecifyKind(
-            toDate.AddDays(1).ToDateTime(TimeOnly.MinValue),
-            DateTimeKind.Utc);
-
-        return query.Where(order => order.OrderDate < toDateExclusive);
-    }
-
-    private static IQueryable<ItemAggregate> CreateItemAggregateQuery(
-        IQueryable<CustomerOrder> eligibleOrders)
-    {
-        return eligibleOrders
-            .SelectMany(order => order.OrderItems)
-            .GroupBy(_ => 1)
-            .Select(group => new ItemAggregate(
-                group.Sum(item => item.UnitPrice * item.Quantity),
-                group.Sum(item => (long)item.Quantity)));
+        return await dataAccess.GetCustomerPurchaseSummaryAsync(
+            customerId,
+            fromDate,
+            toDate,
+            cancellationToken);
     }
 
     private void ValidateDateRange(DateOnly fromDate, DateOnly toDate)
@@ -214,6 +118,4 @@ public sealed class SalesAnalyticsService : ISalesAnalyticsService
                 $"Ürün limiti 1 ile {maximumTopProducts} arasında olmalıdır.");
         }
     }
-
-    private sealed record ItemAggregate(decimal Revenue, long Quantity);
 }

@@ -3,6 +3,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Aygaz.AgentFramework.Configuration;
+using Aygaz.AgentFramework.Resilience;
 using Aygaz.ECommerce.SemanticKernel.Capabilities;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
@@ -20,20 +21,41 @@ public sealed class AygazDomainGuardrail : IAygazDomainGuardrail
         Sen Aygaz e-ticaret uygulaması için domain+capability sınıflandırıcısısın.
         Kullanıcıya cevap üretme, tool/function çağırma, açıklama yazma.
 
-        Görev:
-        1) Decision ver: Allowed | OutOfScope | Ambiguous
-        2) Capability ver: Customer | Order | ProductInventory | Sales | Policy | Unknown
+        Görev (sırayla):
+        1) First decide if the request is about the Aygaz domain.
+        2) Then decide capability: Customer | Order | ProductInventory | Sales | Policy | Unknown
+        3) Decision: Allowed | OutOfScope | Ambiguous
 
-        Kurallar:
-        - Aygaz müşteri/sipariş/ürün-stok/satış/politika destek soruları Allowed.
-        - "Ahmet Yılmaz'ın bilgileri", "1 numaralı müşteri", "İstanbul'daki müşteriler" gibi uygulama içi müşteri sorguları Aygaz adı yazmasa da Allowed + Customer.
-        - Current message may contain pronouns or omitted customer identity. Use recent conversation context to resolve references such as "onun", "telefonu", "adresi", "bilgileri", "tüm bilgilerini". If the recent conversation clearly identifies an Aygaz customer, classify the follow-up as Allowed + Customer.
-        - "Aygazın cirosu ne kadar?" Allowed + Sales.
-        - "AYG-DEMO-PRD-001 stokta mı?" Allowed + ProductInventory.
-        - "Aygaz iade politikası nedir?" Allowed + Policy.
-        - Başka şirket açıkça geçiyorsa (örn Turkcell) OutOfScope + Unknown.
-        - Genel dünya bilgisi, spor, coğrafya vb. OutOfScope + Unknown.
-        - Aygaz ile ilgili ama eksik/bağlamsız sorular Ambiguous olabilir; capability tahmini yapılabiliyorsa doldur.
+        Domain vs capability:
+        - Being about Aygaz and having a supported capability are different.
+        - Explicitly Aygaz-related requests with no matching business capability are Allowed + Unknown.
+        - Never mark an explicitly Aygaz-related request as OutOfScope only because its capability is unsupported.
+        - Never route generic Aygaz company-information questions to Customer.
+
+        Examples Allowed + Unknown:
+        - "Aygaz CEO kim", "Aygaz'ın CEO'su kim"
+        - "Aygaz ne zaman kuruldu"
+        - "Aygaz genel merkezi nerede"
+        - "Aygaz hakkında bilgi verir misin"
+        - "Aygaz çalışan sayısı kaç"
+
+        Other Allowed examples:
+        - Customer: "Ahmet Yılmaz'ın bilgileri", "1 numaralı müşteri", "İstanbul'daki müşteriler" (Aygaz adı olmasa da)
+        - Order: "AYG-DEMO-1004 siparişinin durumu", "1 numaralı müşterinin siparişleri", "1 numaralı müşterinin son siparişi"
+        - Sales: "Aygazın cirosu ne kadar?"
+        - ProductInventory: "AYG-DEMO-PRD-001 stokta mı?"
+        - Policy: "Aygaz iade politikası nedir?"
+
+        History rule:
+        - Current explicit intent in the user message takes precedence over previous conversation context.
+        - Use recent conversation history ONLY for referential follow-ups such as "durumu neydi", "telefonu neydi", "tüm bilgilerini getir", "bu müşterinin siparişleri".
+        - Do not use customer history to classify "Aygaz'ın CEO'su kim?" as Customer.
+
+        OutOfScope (Aygaz dışı):
+        - Other companies: Turkcell, Trendyol, Amazon, Arçelik
+        - General world knowledge / sports / geography: "BJK maçı", "Türkiye'nin başkenti"
+
+        Ambiguous: unclear Aygaz-related asks without enough signal; fill capability when estimable.
 
         Çıktı yalnızca geçerli JSON olsun:
         {"decision":"Allowed|OutOfScope|Ambiguous","capability":"Customer|Order|ProductInventory|Sales|Policy|Unknown","reason":"kısa opsiyonel neden"}
@@ -103,6 +125,10 @@ public sealed class AygazDomainGuardrail : IAygazDomainGuardrail
                     1);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (AiProviderTemporarilyUnavailableException)
         {
             throw;
         }

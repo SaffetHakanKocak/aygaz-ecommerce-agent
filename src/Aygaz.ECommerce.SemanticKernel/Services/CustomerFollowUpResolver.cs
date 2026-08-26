@@ -42,6 +42,11 @@ internal static class CustomerFollowUpResolver
             return false;
         }
 
+        if (ReferentialMessageDetector.ContainsExplicitEntityMarker(message))
+        {
+            return false;
+        }
+
         string normalized = Normalize(message);
         return FollowUpPhrases.Any(phrase =>
             normalized == phrase
@@ -51,35 +56,26 @@ internal static class CustomerFollowUpResolver
 
     public static bool HistoryHasCustomerReference(ChatHistory? history)
     {
-        if (history is null || history.Count == 0)
-        {
-            return false;
-        }
-
-        for (int i = history.Count - 1; i >= 0; i--)
-        {
-            var msg = history[i];
-            if (string.IsNullOrWhiteSpace(msg.Content))
-            {
-                continue;
-            }
-
-            string content = msg.Content.ToLower(Turkish);
-            if (content.Contains("müşteri", StringComparison.Ordinal)
-                || content.Contains("musteri", StringComparison.Ordinal)
-                || content.Contains("müşteri no", StringComparison.Ordinal)
-                || content.Contains("ad soyad", StringComparison.Ordinal))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return ConversationContextResolver.GetMostRecentEntityContext(history)
+            == ConversationEntityContext.Customer;
     }
 
     public static bool IsCustomerFollowUp(ChatHistory? history, string message)
     {
-        return IsFollowUpPhrase(message) && HistoryHasCustomerReference(history);
+        if (ExplicitCapabilityResolver.TryResolve(message, out _))
+        {
+            return false;
+        }
+
+        if (!IsFollowUpPhrase(message))
+        {
+            return false;
+        }
+
+        ConversationEntityContext context =
+            ConversationContextResolver.GetMostRecentEntityContext(history);
+
+        return context == ConversationEntityContext.Customer;
     }
 
     private static string Normalize(string message)
