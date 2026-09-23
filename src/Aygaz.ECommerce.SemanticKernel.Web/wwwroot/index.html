@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aygaz AI Assistant</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>Aygaz AI Assistant</h1>
+      <p class="subtitle">Semantic Kernel CustomerAgent demo — sentetik Aygaz e-ticaret verileri.</p>
+    </header>
+
+    <main id="messages" class="messages" aria-live="polite"></main>
+
+    <div id="error" class="error hidden" role="alert"></div>
+
+    <form id="chat-form" class="composer">
+      <textarea
+        id="message-input"
+        rows="2"
+        maxlength="2000"
+        placeholder="Mesajınızı yazın..."
+        aria-label="Mesaj"></textarea>
+      <div class="composer-actions">
+        <button type="button" id="clear-button" class="secondary">Yeni sohbet</button>
+        <button type="submit" id="send-button">Gönder</button>
+      </div>
+    </form>
+
+    <div id="loading" class="loading hidden" aria-hidden="true">
+      <span class="spinner"></span>
+      <span>Yanıt hazırlanıyor...</span>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,29 +1,16 @@
 using System.Globalization;
-using System.Linq.Expressions;
-using Aygaz.ECommerce.Agent.Data;
-using Aygaz.ECommerce.Agent.Entities;
+using Aygaz.ECommerce.Agent.DataAccess;
 using Aygaz.ECommerce.Agent.Models;
-using Microsoft.EntityFrameworkCore;
 
 namespace Aygaz.ECommerce.Agent.Services;
 
-public sealed class CustomerService(ECommerceDbContext dbContext) : ICustomerService
+public sealed class CustomerService(IECommerceDataAccess dataAccess) : ICustomerService
 {
     private const CompareOptions NameSearchOptions =
         CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace;
 
     private static readonly CompareInfo TurkishCompareInfo =
         CultureInfo.GetCultureInfo("tr-TR").CompareInfo;
-
-    private static readonly Expression<Func<Customer, CustomerDto>> ToDto = customer =>
-        new CustomerDto(
-            customer.Id,
-            customer.FirstName,
-            customer.LastName,
-            customer.Email,
-            customer.Phone,
-            customer.City,
-            customer.CreatedAt);
 
     public Task<CustomerDto?> GetCustomerByIdAsync(
         int id,
@@ -34,11 +21,7 @@ public sealed class CustomerService(ECommerceDbContext dbContext) : ICustomerSer
             return Task.FromResult<CustomerDto?>(null);
         }
 
-        return dbContext.Customers
-            .AsNoTracking()
-            .Where(customer => customer.Id == id)
-            .Select(ToDto)
-            .SingleOrDefaultAsync(cancellationToken);
+        return dataAccess.GetCustomerByIdAsync(id, cancellationToken);
     }
 
     public Task<CustomerDto?> GetCustomerByEmailAsync(
@@ -52,11 +35,7 @@ public sealed class CustomerService(ECommerceDbContext dbContext) : ICustomerSer
 
         string normalizedEmail = email.Trim();
 
-        return dbContext.Customers
-            .AsNoTracking()
-            .Where(customer => customer.Email == normalizedEmail)
-            .Select(ToDto)
-            .SingleOrDefaultAsync(cancellationToken);
+        return dataAccess.GetCustomerByEmailAsync(normalizedEmail, cancellationToken);
     }
 
     public async Task<IReadOnlyList<CustomerDto>> SearchCustomersByNameAsync(
@@ -77,25 +56,31 @@ public sealed class CustomerService(ECommerceDbContext dbContext) : ICustomerSer
             return Array.Empty<CustomerDto>();
         }
 
-        List<CustomerDto> customers = await dbContext.Customers
-            .AsNoTracking()
-            .OrderBy(customer => customer.Id)
-            .Select(ToDto)
-            .ToListAsync(cancellationToken);
+        IReadOnlyList<CustomerDto> customers = await dataAccess
+            .GetAllCustomersAsync(cancellationToken);
 
         return customers
             .Where(customer => MatchesAllTokens(customer, searchTokens, cancellationToken))
             .ToList();
     }
 
+    public async Task<IReadOnlyList<CustomerDto>> SearchCustomersByCityAsync(
+        string city,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(city))
+        {
+            return Array.Empty<CustomerDto>();
+        }
+
+        string normalizedCity = city.Trim();
+        return await dataAccess.SearchCustomersByCityAsync(normalizedCity, cancellationToken);
+    }
+
     public async Task<IReadOnlyList<CustomerDto>> GetAllCustomersAsync(
         CancellationToken cancellationToken = default)
     {
-        return await dbContext.Customers
-            .AsNoTracking()
-            .OrderBy(customer => customer.Id)
-            .Select(ToDto)
-            .ToListAsync(cancellationToken);
+        return await dataAccess.GetAllCustomersAsync(cancellationToken);
     }
 
     private static bool MatchesAllTokens(

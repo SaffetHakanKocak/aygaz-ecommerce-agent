@@ -7,4 +7,10 @@ public sealed record InventoryDto(
     string LocationName,
     int QuantityAvailable,
     int ReorderLevel,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt)
+{
+    public InventoryDto()
+        : this(0, 0, string.Empty, string.Empty, 0, 0, default)
+    {
+    }
+}

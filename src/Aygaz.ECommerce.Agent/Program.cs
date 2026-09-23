@@ -2,6 +2,7 @@ using System.Text;
 using Aygaz.ECommerce.Agent.Agent;
 using Aygaz.ECommerce.Agent.Configuration;
 using Aygaz.ECommerce.Agent.Data;
+using Aygaz.ECommerce.Agent.DataAccess;
 using Aygaz.ECommerce.Agent.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -27,7 +28,27 @@ internal static class Program
         try
         {
             using IHost host = CreateHost(args);
+
+            if (args.Any(argument => argument.Equals(
+                "--seed-mongodb",
+                StringComparison.OrdinalIgnoreCase)))
+            {
+                string environment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
+                    ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+                    ?? "Production";
+                if (environment.Equals("Production", StringComparison.OrdinalIgnoreCase)
+                    && !host.Services.GetRequiredService<MongoDbOptions>().AllowProductionSeed)
+                {
+                    throw new InvalidOperationException(
+                        "Production MongoDB seed için DataAccess:MongoDb:AllowProductionSeed=true gereklidir.");
+                }
+
+                await SeedMongoDbAsync(host.Services, cancellationTokenSource.Token);
+                return 0;
+            }
+
             await InitializeDatabaseAsync(host.Services, cancellationTokenSource.Token);
+            await InitializeMongoDatabaseAsync(host.Services, cancellationTokenSource.Token);
 
             await RunMainMenuAsync(host.Services, cancellationTokenSource.Token);
 
@@ -98,8 +119,37 @@ internal static class Program
         CancellationToken cancellationToken)
     {
         await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
-        var initializer = scope.ServiceProvider.GetRequiredService<DatabaseInitializer>();
+        var initializer = scope.ServiceProvider.GetService<IRelationalDatabaseInitializer>();
+        if (initializer is null)
+        {
+            return;
+        }
+
         await initializer.InitializeAsync(cancellationToken);
+    }
+
+    private static async Task InitializeMongoDatabaseAsync(
+        IServiceProvider serviceProvider,
+        CancellationToken cancellationToken)
+    {
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+        var initializer = scope.ServiceProvider.GetService<IMongoDatabaseInitializer>();
+        if (initializer is null)
+        {
+            return;
+        }
+
+        await initializer.InitializeAsync(cancellationToken);
+    }
+
+    private static async Task SeedMongoDbAsync(
+        IServiceProvider serviceProvider,
+        CancellationToken cancellationToken)
+    {
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+        var seeder = scope.ServiceProvider.GetRequiredService<MongoDummyDataSeeder>();
+        await seeder.SeedAsync(cancellationToken);
+        Console.WriteLine("MongoDB dummy verileri hazırlandı.");
     }
 
     private static async Task RunMainMenuAsync(

@@ -16,6 +16,10 @@ public interface ICustomerService
         string searchTerm,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<CustomerDto>> SearchCustomersByCityAsync(
+        string city,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<CustomerDto>> GetAllCustomersAsync(
         CancellationToken cancellationToken = default);
 }

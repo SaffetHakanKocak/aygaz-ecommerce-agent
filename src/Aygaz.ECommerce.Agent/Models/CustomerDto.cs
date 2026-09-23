@@ -6,5 +6,12 @@ public sealed record CustomerDto(
     string LastName,
     string Email,
     string? Phone,
+    string? Address,
     string? City,
-    DateTime CreatedAt);
+    DateTime CreatedAt)
+{
+    public CustomerDto()
+        : this(0, string.Empty, string.Empty, string.Empty, null, null, null, default)
+    {
+    }
+}

@@ -1,6 +1,7 @@
 using Aygaz.ECommerce.Agent.Configuration;
-using Aygaz.ECommerce.Agent.Data;
+using Aygaz.ECommerce.Agent.DataAccess;
 using Aygaz.ECommerce.Agent.Guardrails;
+using Aygaz.ECommerce.Agent.Rag;
 using Aygaz.ECommerce.Web.Configuration;
 using Aygaz.ECommerce.Web.Services;
 
@@ -18,7 +19,7 @@ public partial class Program
 
         builder.Services
             .AddOptions<ChatApiOptions>()
-            .Bind(builder.Configuration.GetRequiredSection(ChatApiOptions.SectionName))
+            .Bind(builder.Configuration.GetSection(ChatApiOptions.SectionName))
             .Validate(
                 options => options.MaxMessageLength is >= 1 and <= 2000,
                 "ChatApi:MaxMessageLength 1 ile 2000 arasında olmalıdır.");
@@ -39,6 +40,8 @@ public partial class Program
         WebApplication app = builder.Build();
 
         await InitializeDatabaseAsync(app.Services);
+        await InitializeMongoDatabaseAsync(app.Services);
+        await InitializeRagAsync(app.Services, app.Configuration);
 
         if (app.Environment.IsDevelopment())
         {
@@ -68,7 +71,45 @@ public partial class Program
     private static async Task InitializeDatabaseAsync(IServiceProvider serviceProvider)
     {
         await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
-        var initializer = scope.ServiceProvider.GetRequiredService<DatabaseInitializer>();
+        var initializer = scope.ServiceProvider.GetService<IRelationalDatabaseInitializer>();
+        if (initializer is null)
+        {
+            return;
+        }
+
         await initializer.InitializeAsync();
+    }
+
+    private static async Task InitializeMongoDatabaseAsync(IServiceProvider serviceProvider)
+    {
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+        var initializer = scope.ServiceProvider.GetService<IMongoDatabaseInitializer>();
+        if (initializer is null)
+        {
+            return;
+        }
+
+        await initializer.InitializeAsync();
+    }
+
+    private static async Task InitializeRagAsync(
+        IServiceProvider serviceProvider,
+        IConfiguration configuration)
+    {
+        if (!configuration.GetValue("Rag:AutoIngestOnStartup", true))
+        {
+            return;
+        }
+
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+        IDocumentIngestionService? ingestionService = scope.ServiceProvider.GetService<IDocumentIngestionService>();
+        if (ingestionService is null)
+        {
+            return;
+        }
+
+        DocumentIngestionResult result = await ingestionService.IngestAsync();
+        Console.WriteLine(
+            $"RAG dokuman index hazir: {result.DocumentCount} dokuman, {result.ChunkCount} chunk.");
     }
 }

@@ -225,7 +225,9 @@ public sealed class CustomerToolExecutor : IAgentToolModule
             customer.FirstName,
             customer.LastName,
             customer.Email,
-            customer.City);
+            customer.City,
+            customer.Phone,
+            customer.Address);
     }
 
     private static OllamaToolDefinition CreateToolDefinition(

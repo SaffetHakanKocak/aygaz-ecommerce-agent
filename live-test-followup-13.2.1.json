@@ -1,0 +1,50 @@
+﻿[
+    {
+        "Test":  "T1 full follow-up",
+        "Pass":  true,
+        "Decision":  "Allowed",
+        "Cap":  "Customer",
+        "Agent":  "CustomerAgent",
+        "Fn":  "get_customer_by_id",
+        "FnCount":  1,
+        "Guard":  1,
+        "Ms":  1586,
+        "Msg":  "Müşteri Bilgileri\r\nMüşteri No: 1\r\nAd Soyad: Ahmet Yılmaz\r\nE-posta: ahmet.yilmaz@example.com\r\nTelefon: 0532 000 00 01\r\nAd"
+    },
+    {
+        "Test":  "T2 ID then full",
+        "Pass":  true,
+        "Decision":  "Allowed",
+        "Cap":  "Customer",
+        "Agent":  "CustomerAgent",
+        "Fn":  "get_customer_by_id",
+        "FnCount":  1,
+        "Guard":  1,
+        "Ms":  1358,
+        "Msg":  "Müşteri Bilgileri\r\nMüşteri No: 2\r\nAd Soyad: Mehmet Kaya\r\nE-posta: mehmet.kaya@example.com\r\nTelefon: 0532 000 00 02\r\nAdre"
+    },
+    {
+        "Test":  "T3 city follow-up",
+        "Pass":  true,
+        "Decision":  "Allowed",
+        "Cap":  "Customer",
+        "Agent":  "CustomerAgent",
+        "Fn":  "get_customer_by_id",
+        "FnCount":  1,
+        "Guard":  1,
+        "Ms":  1052,
+        "Msg":  "Ahmet Yılmaz\u0027ın şehri: İstanbul"
+    },
+    {
+        "Test":  "T4 clear then full",
+        "Pass":  true,
+        "Decision":  "Allowed",
+        "Cap":  "Customer",
+        "Agent":  "CustomerAgent",
+        "Fn":  null,
+        "FnCount":  0,
+        "Guard":  1,
+        "Ms":  1262,
+        "Msg":  "Hangi müşterinin tüm bilgilerini görmek istediğinizi belirtir misiniz? Örneğin e‑posta adresi, müşteri numarası, isim ya da şehir gibi bir bilgi verebilirsiniz."
+    }
+]

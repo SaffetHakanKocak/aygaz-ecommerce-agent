@@ -6,4 +6,10 @@ public sealed record ProductDto(
     string Name,
     string Category,
     decimal UnitPrice,
-    bool IsActive);
+    bool IsActive)
+{
+    public ProductDto()
+        : this(0, string.Empty, string.Empty, string.Empty, 0m, false)
+    {
+    }
+}

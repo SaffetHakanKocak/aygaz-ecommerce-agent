@@ -1,22 +1,10 @@
-using System.Linq.Expressions;
-using Aygaz.ECommerce.Agent.Data;
-using Aygaz.ECommerce.Agent.Entities;
+using Aygaz.ECommerce.Agent.DataAccess;
 using Aygaz.ECommerce.Agent.Models;
-using Microsoft.EntityFrameworkCore;
 
 namespace Aygaz.ECommerce.Agent.Services;
 
-public sealed class OrderService(ECommerceDbContext dbContext) : IOrderService
+public sealed class OrderService(IECommerceDataAccess dataAccess) : IOrderService
 {
-    private static readonly Expression<Func<CustomerOrder, OrderDto>> ToDto = order =>
-        new OrderDto(
-            order.Id,
-            order.OrderNumber,
-            order.CustomerId,
-            order.OrderDate,
-            order.Status,
-            order.TotalAmount);
-
     public Task<OrderDto?> GetOrderByIdAsync(
         int id,
         CancellationToken cancellationToken = default)
@@ -26,11 +14,7 @@ public sealed class OrderService(ECommerceDbContext dbContext) : IOrderService
             return Task.FromResult<OrderDto?>(null);
         }
 
-        return dbContext.CustomerOrders
-            .AsNoTracking()
-            .Where(order => order.Id == id)
-            .Select(ToDto)
-            .SingleOrDefaultAsync(cancellationToken);
+        return dataAccess.GetOrderByIdAsync(id, cancellationToken);
     }
 
     public Task<OrderDto?> GetOrderByNumberAsync(
@@ -44,11 +28,7 @@ public sealed class OrderService(ECommerceDbContext dbContext) : IOrderService
 
         string normalizedOrderNumber = orderNumber.Trim();
 
-        return dbContext.CustomerOrders
-            .AsNoTracking()
-            .Where(order => order.OrderNumber == normalizedOrderNumber)
-            .Select(ToDto)
-            .SingleOrDefaultAsync(cancellationToken);
+        return dataAccess.GetOrderByNumberAsync(normalizedOrderNumber, cancellationToken);
     }
 
     public async Task<IReadOnlyList<OrderDto>> GetCustomerOrdersAsync(
@@ -61,14 +41,7 @@ public sealed class OrderService(ECommerceDbContext dbContext) : IOrderService
             return Array.Empty<OrderDto>();
         }
 
-        return await dbContext.CustomerOrders
-            .AsNoTracking()
-            .Where(order => order.CustomerId == customerId)
-            .OrderByDescending(order => order.OrderDate)
-            .ThenByDescending(order => order.Id)
-            .Take(maxResults)
-            .Select(ToDto)
-            .ToListAsync(cancellationToken);
+        return await dataAccess.GetCustomerOrdersAsync(customerId, maxResults, cancellationToken);
     }
 
     public Task<OrderDto?> GetLatestCustomerOrderAsync(
@@ -80,12 +53,6 @@ public sealed class OrderService(ECommerceDbContext dbContext) : IOrderService
             return Task.FromResult<OrderDto?>(null);
         }
 
-        return dbContext.CustomerOrders
-            .AsNoTracking()
-            .Where(order => order.CustomerId == customerId)
-            .OrderByDescending(order => order.OrderDate)
-            .ThenByDescending(order => order.Id)
-            .Select(ToDto)
-            .FirstOrDefaultAsync(cancellationToken);
+        return dataAccess.GetLatestCustomerOrderAsync(customerId, cancellationToken);
     }
 }

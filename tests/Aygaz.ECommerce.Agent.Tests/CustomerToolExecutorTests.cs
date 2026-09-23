@@ -129,7 +129,9 @@ public sealed class CustomerToolExecutorTests
 
         foreach (JsonElement returnedCustomer in returnedCustomers)
         {
-            Assert.Equal(5, returnedCustomer.EnumerateObject().Count());
+            Assert.Equal(7, returnedCustomer.EnumerateObject().Count());
+            Assert.True(returnedCustomer.TryGetProperty("phoneNumber", out _));
+            Assert.True(returnedCustomer.TryGetProperty("address", out _));
             Assert.False(returnedCustomer.TryGetProperty("phone", out _));
             Assert.False(returnedCustomer.TryGetProperty("createdAt", out _));
         }
@@ -290,6 +292,7 @@ public sealed class CustomerToolExecutorTests
             lastName,
             $"customer{id}@example.com",
             $"000-000-{id:0000} (TEST)",
+            "Atatürk Mah. Örnek Sok. No: 10",
             "İstanbul",
             new DateTime(2026, 1, id, 9, 0, 0, DateTimeKind.Utc));
     }
@@ -318,12 +321,14 @@ public sealed class CustomerToolExecutorTests
 
     private static void AssertMinimizedCustomer(JsonElement data, CustomerDto expected)
     {
-        Assert.Equal(5, data.EnumerateObject().Count());
+        Assert.Equal(7, data.EnumerateObject().Count());
         Assert.Equal(expected.Id, data.GetProperty("id").GetInt32());
         Assert.Equal(expected.FirstName, data.GetProperty("firstName").GetString());
         Assert.Equal(expected.LastName, data.GetProperty("lastName").GetString());
         Assert.Equal(expected.Email, data.GetProperty("email").GetString());
         Assert.Equal(expected.City, data.GetProperty("city").GetString());
+        Assert.Equal(expected.Phone, data.GetProperty("phoneNumber").GetString());
+        Assert.Equal(expected.Address, data.GetProperty("address").GetString());
         Assert.False(data.TryGetProperty("phone", out _));
         Assert.False(data.TryGetProperty("createdAt", out _));
     }
@@ -396,6 +401,13 @@ public sealed class CustomerToolExecutorTests
             SearchByNameCallCount++;
             LastNameQuery = searchTerm;
             return Task.FromResult(NameSearchResult);
+        }
+
+        public Task<IReadOnlyList<CustomerDto>> SearchCustomersByCityAsync(
+            string city,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<CustomerDto>>([]);
         }
 
         public Task<IReadOnlyList<CustomerDto>> GetAllCustomersAsync(
