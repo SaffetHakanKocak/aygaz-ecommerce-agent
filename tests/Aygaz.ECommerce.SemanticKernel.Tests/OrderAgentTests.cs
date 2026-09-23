@@ -346,6 +346,26 @@ public sealed class OrderLookupResponseFormatterTests
     }
 }
 
+public sealed class OrderMutationIntentTests
+{
+    [Theory]
+    [InlineData("AYG-DEMO-1004 numaralı siparişin durumunu teslim edildi yap.")]
+    [InlineData("AYG-DEMO-1004 siparişini teslim edildi olsun")]
+    public void MutationPhrases_AreDetected(string message)
+    {
+        Assert.True(OrderMutationIntent.IsMutation(message));
+    }
+
+    [Theory]
+    [InlineData("AYG-DEMO-1004 siparişinin durumu nedir?")]
+    [InlineData("AYG-DEMO-1004 teslim edildi mi?")]
+    [InlineData("AYG-DEMO-1004 siparişinin bilgilerini getir.")]
+    public void LookupPhrases_AreNotMutation(string message)
+    {
+        Assert.False(OrderMutationIntent.IsMutation(message));
+    }
+}
+
 public sealed class OrderFollowUpResolverTests
 {
     [Fact]

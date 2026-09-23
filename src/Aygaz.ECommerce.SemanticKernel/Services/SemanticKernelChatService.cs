@@ -2,9 +2,12 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using Aygaz.AgentFramework.Execution;
+using Aygaz.AgentFramework.Resilience;
 using Aygaz.ECommerce.Agent.Entities;
 using Aygaz.ECommerce.Agent.Models;
 using Aygaz.ECommerce.Agent.Models.Agent;
+using Aygaz.ECommerce.Agent.Rag;
 using Aygaz.ECommerce.SemanticKernel.Agents;
 using Aygaz.ECommerce.SemanticKernel.Formatting;
 using Aygaz.ECommerce.SemanticKernel.Guardrails;
@@ -91,20 +94,29 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
                 stopwatch.ElapsedMilliseconds);
         }
 
-        if (TryExtractOrderNumber(normalizedMessage, out string orderNumber)
-            && await TryHandleOrderFastPathAsync(
-                normalizedMessage,
-                orderNumber,
-                stopwatch,
-                cancellationToken) is { } orderFastPathResult)
+        AygazDomainClassificationResult guardrail;
+        try
         {
-            return orderFastPathResult;
+            guardrail = await _host.Guardrail.EvaluateAsync(
+                normalizedMessage,
+                conversationHistory,
+                cancellationToken);
         }
+        catch (AiProviderTemporarilyUnavailableException)
+        {
+            SemanticKernelChatResult? fallbackResult = await TryHandleProviderFallbackAsync(
+                normalizedMessage,
+                conversationHistory,
+                null,
+                stopwatch,
+                cancellationToken);
+            if (fallbackResult is not null)
+            {
+                return fallbackResult;
+            }
 
-        AygazDomainClassificationResult guardrail = await _host.Guardrail.EvaluateAsync(
-            normalizedMessage,
-            conversationHistory,
-            cancellationToken);
+            throw;
+        }
 
         guardrail = ApplyCompanyInfoOverride(guardrail, normalizedMessage);
         guardrail = ApplyExplicitIntentOverride(guardrail, normalizedMessage);
@@ -186,25 +198,45 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
                 stopwatch.ElapsedMilliseconds);
         }
 
-        if (capability == AygazCapability.ProductInventory
-            && TryExtractSku(normalizedMessage, out string sku)
-            && await TryHandleProductInventoryFastPathAsync(
+        _host.Telemetry.Reset();
+        AgentResponse agentResponse;
+        try
+        {
+            agentResponse = await _host.Runner.InvokeAsync(
+                agent,
                 normalizedMessage,
-                sku,
-                agent.Name ?? string.Empty,
+                conversationHistory,
+                cancellationToken);
+        }
+        catch (AiProviderTemporarilyUnavailableException)
+        {
+            SemanticKernelChatResult? fallbackResult = await TryHandleProviderFallbackAsync(
+                normalizedMessage,
+                conversationHistory,
                 guardrail,
                 stopwatch,
-                cancellationToken) is { } fastPathResult)
-        {
-            return fastPathResult;
+                cancellationToken);
+            if (fallbackResult is not null)
+            {
+                return fallbackResult;
+            }
+
+            throw;
         }
 
-        _host.Telemetry.Reset();
-        var agentResponse = await _host.Runner.InvokeAsync(
-            agent,
-            normalizedMessage,
-            conversationHistory,
-            cancellationToken);
+        if (capability == AygazCapability.Policy
+            && LooksLikeEmptyPolicyResponse(agentResponse.Content))
+        {
+            SemanticKernelChatResult? fallbackResult = await TryHandlePolicyFastPathAsync(
+                normalizedMessage,
+                guardrail,
+                stopwatch,
+                cancellationToken);
+            if (fallbackResult is not null)
+            {
+                return fallbackResult;
+            }
+        }
 
         stopwatch.Stop();
         return new SemanticKernelChatResult(
@@ -222,6 +254,19 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
             FastPathUsed: _host.Telemetry.Terminated);
     }
 
+    private static bool LooksLikeEmptyPolicyResponse(string? content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return false;
+        }
+
+        string normalized = content.ToLower(CultureInfo.GetCultureInfo("tr-TR"));
+        return normalized.Contains("politika", StringComparison.Ordinal)
+               && (normalized.Contains("bulunamadi", StringComparison.Ordinal)
+                   || normalized.Contains("bulunamadı", StringComparison.Ordinal));
+    }
+
     private ChatCompletionAgent? ResolveAgent(AygazCapability capability, string userMessage)
     {
         string? routeKey = MultiAgentRouteResolver.ResolveRouteKey(capability, userMessage);
@@ -232,6 +277,66 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
 
         string? agentName = _host.Router.ResolveAgentName(routeKey);
         return agentName is null ? null : _host.Registry.GetAgent(agentName);
+    }
+
+    private async Task<SemanticKernelChatResult?> TryHandleProviderFallbackAsync(
+        string userMessage,
+        ChatHistory? conversationHistory,
+        AygazDomainClassificationResult? guardrail,
+        Stopwatch stopwatch,
+        CancellationToken cancellationToken)
+    {
+        AygazCapability capability = guardrail?.Capability ?? AygazCapability.Unknown;
+        if (capability == AygazCapability.Unknown
+            && !IsExplicitOutOfScope(userMessage.ToLower(CultureInfo.GetCultureInfo("tr-TR")))
+            && ExplicitCapabilityResolver.TryResolve(userMessage, out AygazCapability explicitCapability))
+        {
+            capability = explicitCapability;
+        }
+
+        AygazDomainClassificationResult fallbackGuardrail = guardrail
+            ?? new AygazDomainClassificationResult(
+                DomainDecision.Allowed,
+                capability,
+                "ai_provider_fallback",
+                stopwatch.Elapsed,
+                0);
+
+        if (capability == AygazCapability.Policy)
+        {
+            return await TryHandlePolicyFastPathAsync(
+                userMessage,
+                fallbackGuardrail,
+                stopwatch,
+                cancellationToken);
+        }
+
+        if (capability == AygazCapability.Order
+            && TryExtractOrderNumber(userMessage, out string orderNumber))
+        {
+            return await TryHandleOrderFastPathAsync(
+                userMessage,
+                orderNumber,
+                stopwatch,
+                cancellationToken);
+        }
+
+        if (capability == AygazCapability.ProductInventory
+            && TryExtractSku(userMessage, out string sku))
+        {
+            string selectedAgent = LooksLikeInventoryRequest(userMessage)
+                ? InventoryAgentRegistration.AgentName
+                : ProductAgentRegistration.AgentName;
+            return await TryHandleProductInventoryFastPathAsync(
+                userMessage,
+                sku,
+                selectedAgent,
+                fallbackGuardrail,
+                stopwatch,
+                cancellationToken);
+        }
+
+        return null;
     }
 
     private async Task<SemanticKernelChatResult?> TryHandleProductInventoryFastPathAsync(
@@ -343,7 +448,7 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
                 "cancel_order");
         }
 
-        if (LooksLikeStatusUpdateRequest(normalized)
+        if ((LooksLikeStatusUpdateRequest(normalized) || OrderMutationIntent.IsMutation(userMessage))
             && TryParseRequestedStatus(normalized, out OrderStatus status))
         {
             string? reason = ExtractReason(userMessage);
@@ -367,6 +472,11 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
                 FormatOrderOperation(result),
                 stopwatch.ElapsedMilliseconds,
                 "update_order_status");
+        }
+
+        if (OrderMutationIntent.IsMutation(userMessage))
+        {
+            return null;
         }
 
         OrderDto? order = await _host.OrderService.GetOrderByNumberAsync(orderNumber, cancellationToken);
@@ -830,6 +940,51 @@ public sealed class SemanticKernelChatService : ISemanticKernelChatService
         }
 
         return result;
+    }
+
+    private async Task<SemanticKernelChatResult?> TryHandlePolicyFastPathAsync(
+        string userMessage,
+        AygazDomainClassificationResult guardrail,
+        Stopwatch stopwatch,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<DocumentSearchResult> results =
+            await _host.DocumentRetrievalService.SearchAsync(userMessage, cancellationToken);
+
+        stopwatch.Stop();
+        return new SemanticKernelChatResult(
+            FormatPolicyResults(results),
+            DomainDecision.Allowed,
+            AygazCapability.Policy,
+            SupportPolicyAgentRegistration.AgentName,
+            stopwatch.ElapsedMilliseconds,
+            BusinessAgentInvoked: true,
+            BusinessFunctionInvoked: true,
+            GuardrailInferenceCount: guardrail.InferenceCount,
+            AgentInferenceCount: 0,
+            FunctionInvocationCount: 1,
+            InvokedFunctionName: "search_support_policy",
+            FastPathUsed: true);
+    }
+
+    private static string FormatPolicyResults(
+        IReadOnlyList<DocumentSearchResult> results)
+    {
+        if (results.Count == 0)
+        {
+            return "Ilgili Aygaz destek politikasi bilgisi bulunamadi.";
+        }
+
+        return "Ilgili politika bilgisi:\n" + string.Join("\n", results.Take(3).Select(result =>
+            $"- {result.DocumentName}: {TrimSingleLine(result.Text, 240)}"));
+    }
+
+    private static string TrimSingleLine(string value, int maxLength)
+    {
+        string normalized = value.ReplaceLineEndings(" ").Trim();
+        return normalized.Length <= maxLength
+            ? normalized
+            : normalized[..maxLength].TrimEnd() + "...";
     }
 
     private static bool IsExplicitOutOfScope(string normalized)

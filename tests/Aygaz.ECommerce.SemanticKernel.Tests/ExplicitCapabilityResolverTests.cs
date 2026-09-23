@@ -70,6 +70,15 @@ public sealed class ExplicitCapabilityResolverTests
         Assert.Equal(AygazCapability.Policy, capability);
     }
 
+    [Theory]
+    [InlineData("Teslimat politikasi nedir?")]
+    [InlineData("Kampanya kosullarini ozetle")]
+    public void PolicySignalsWithoutAygazName_ResolvePolicy(string message)
+    {
+        Assert.True(ExplicitCapabilityResolver.TryResolve(message, out AygazCapability capability));
+        Assert.Equal(AygazCapability.Policy, capability);
+    }
+
     [Fact]
     public void ExplicitCustomerPhone_OverridesOrderHistoryContext()
     {

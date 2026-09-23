@@ -1,6 +1,7 @@
 #pragma warning disable SKEXP0001
 
 using Aygaz.ECommerce.SemanticKernel.Formatting;
+using Aygaz.ECommerce.SemanticKernel.Services;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 
@@ -16,6 +17,11 @@ public sealed class OrderExactLookupTerminationFilter : IAutoFunctionInvocationF
 
         object? value = context.Result?.GetValue<object>();
         string? userMessage = GetLastUserMessage(context.ChatHistory);
+        if (OrderMutationIntent.IsMutation(userMessage))
+        {
+            return;
+        }
+
         if (!OrderLookupResponseFormatter.TryFormatExactLookup(
             context.Function.Name,
             value,

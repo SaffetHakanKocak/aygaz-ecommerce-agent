@@ -42,6 +42,12 @@ internal static class ExplicitCapabilityResolver
             return true;
         }
 
+        if (HasExplicitPolicyIntent(normalized))
+        {
+            capability = AygazCapability.Policy;
+            return true;
+        }
+
         if (HasExplicitCustomerIntent(message))
         {
             capability = AygazCapability.Customer;
@@ -125,6 +131,20 @@ internal static class ExplicitCapabilityResolver
                || normalized.Contains("urun", StringComparison.Ordinal)
                || normalized.Contains("sku", StringComparison.Ordinal)
                || normalized.Contains("kategori", StringComparison.Ordinal);
+    }
+
+    private static bool HasExplicitPolicyIntent(string normalized)
+    {
+        return normalized.Contains("iade", StringComparison.Ordinal)
+               || normalized.Contains("teslimat", StringComparison.Ordinal)
+               || normalized.Contains("kargo", StringComparison.Ordinal)
+               || normalized.Contains("kampanya", StringComparison.Ordinal)
+               || normalized.Contains("indirim", StringComparison.Ordinal)
+               || normalized.Contains("politika", StringComparison.Ordinal)
+               || normalized.Contains("koşul", StringComparison.Ordinal)
+               || normalized.Contains("kosul", StringComparison.Ordinal)
+               || normalized.Contains("prosedür", StringComparison.Ordinal)
+               || normalized.Contains("prosedur", StringComparison.Ordinal);
     }
 
     private static bool HasExplicitCustomerIntent(string message)
