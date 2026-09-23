@@ -1,6 +1,7 @@
 using Aygaz.ECommerce.Agent.Configuration;
 using Aygaz.ECommerce.Agent.DataAccess;
 using Aygaz.ECommerce.Agent.Guardrails;
+using Aygaz.ECommerce.Agent.Rag;
 using Aygaz.ECommerce.Web.Configuration;
 using Aygaz.ECommerce.Web.Services;
 
@@ -40,6 +41,7 @@ public partial class Program
 
         await InitializeDatabaseAsync(app.Services);
         await InitializeMongoDatabaseAsync(app.Services);
+        await InitializeRagAsync(app.Services, app.Configuration);
 
         if (app.Environment.IsDevelopment())
         {
@@ -88,5 +90,26 @@ public partial class Program
         }
 
         await initializer.InitializeAsync();
+    }
+
+    private static async Task InitializeRagAsync(
+        IServiceProvider serviceProvider,
+        IConfiguration configuration)
+    {
+        if (!configuration.GetValue("Rag:AutoIngestOnStartup", true))
+        {
+            return;
+        }
+
+        await using AsyncServiceScope scope = serviceProvider.CreateAsyncScope();
+        IDocumentIngestionService? ingestionService = scope.ServiceProvider.GetService<IDocumentIngestionService>();
+        if (ingestionService is null)
+        {
+            return;
+        }
+
+        DocumentIngestionResult result = await ingestionService.IngestAsync();
+        Console.WriteLine(
+            $"RAG dokuman index hazir: {result.DocumentCount} dokuman, {result.ChunkCount} chunk.");
     }
 }

@@ -124,7 +124,7 @@ public sealed class MongoDummyDataSeeder
         }
     ];
 
-    private static IReadOnlyList<BsonDocument> CreateProducts() =>
+    internal static IReadOnlyList<BsonDocument> CreateProducts() =>
     [
         new BsonDocument
         {
@@ -145,6 +145,16 @@ public sealed class MongoDummyDataSeeder
             ["unitPrice"] = 320m,
             ["isActive"] = true,
             ["createdAt"] = new BsonDateTime(new DateTime(2025, 1, 5, 8, 0, 0, DateTimeKind.Utc))
+        },
+        new BsonDocument
+        {
+            ["id"] = 2003,
+            ["sku"] = "AYG-DEMO-PRD-003",
+            ["name"] = "Mutfak Tupu 12KG",
+            ["category"] = "LPG",
+            ["unitPrice"] = 890m,
+            ["isActive"] = true,
+            ["createdAt"] = new BsonDateTime(new DateTime(2025, 1, 10, 8, 0, 0, DateTimeKind.Utc))
         }
     ];
 
@@ -198,7 +208,7 @@ public sealed class MongoDummyDataSeeder
         }
     ];
 
-    private static IReadOnlyList<BsonDocument> CreateInventory() =>
+    internal static IReadOnlyList<BsonDocument> CreateInventory() =>
     [
         new BsonDocument
         {
@@ -218,6 +228,16 @@ public sealed class MongoDummyDataSeeder
             ["locationName"] = "Ankara Depo",
             ["quantityAvailable"] = 45,
             ["reorderLevel"] = 10,
+            ["updatedAt"] = new BsonDateTime(new DateTime(2025, 3, 1, 7, 0, 0, DateTimeKind.Utc))
+        },
+        new BsonDocument
+        {
+            ["id"] = 5003,
+            ["productId"] = 2003,
+            ["locationCode"] = "IST-01",
+            ["locationName"] = "Istanbul Depo",
+            ["quantityAvailable"] = 80,
+            ["reorderLevel"] = 15,
             ["updatedAt"] = new BsonDateTime(new DateTime(2025, 3, 1, 7, 0, 0, DateTimeKind.Utc))
         }
     ];

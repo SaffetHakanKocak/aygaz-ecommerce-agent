@@ -11,6 +11,7 @@ internal static class MongoCollectionSetup
     public const string OrderItems = "orderItems";
     public const string Inventory = "inventory";
     public const string OrderAuditLogs = "orderAuditLogs";
+    public const string DocumentChunks = "documentChunks";
 
     public static IReadOnlyDictionary<string, IReadOnlyList<CreateIndexModel<BsonDocument>>> CreateIndexModels()
     {
@@ -69,6 +70,16 @@ internal static class MongoCollectionSetup
                     Builders<BsonDocument>.IndexKeys.Ascending("orderNumber").Descending("createdAt")),
                 new CreateIndexModel<BsonDocument>(
                     Builders<BsonDocument>.IndexKeys.Ascending("orderId").Descending("createdAt"))
+            ],
+            [DocumentChunks] =
+            [
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys.Ascending("contentHash"),
+                    new CreateIndexOptions { Unique = true }),
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys.Ascending("documentName").Ascending("chunkIndex")),
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys.Ascending("ingestedAt"))
             ]
         };
     }

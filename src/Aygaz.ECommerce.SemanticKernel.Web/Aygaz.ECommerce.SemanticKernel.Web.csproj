@@ -10,4 +10,11 @@
     <ProjectReference Include="..\Aygaz.ECommerce.SemanticKernel\Aygaz.ECommerce.SemanticKernel.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\..\data\demo-documents\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>data\demo-documents\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Content>
+  </ItemGroup>
+
 </Project>
