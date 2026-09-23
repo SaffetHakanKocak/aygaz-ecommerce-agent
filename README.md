@@ -1,47 +1,47 @@
 # Aygaz E-Commerce AI Agent
 
-Yerel veri katmani, guardrail'ler, RAG dokuman arama ve Semantic Kernel tabanli cok ajanli sohbet akisi iceren bir C#/.NET e-ticaret AI agent demosu.
+A C#/.NET e-commerce AI agent demo with a local data layer, guardrails, RAG document search, and a multi-agent Semantic Kernel chat flow.
 
-Proje tamamen demo/sentetik veriyle calisir. Gercek Aygaz musteri, siparis, urun, stok, fiyat veya politika verisi kullanilmaz.
+The project runs entirely on demo/synthetic data. It does not use real Aygaz customer, order, product, inventory, price, sales, or policy data.
 
-## Ozellikler
+## Features
 
-- .NET 9 ile console app, ASP.NET Core Web API ve vanilla Chat UI
-- Semantic Kernel uzerinden customer, order, product, inventory, sales ve support-policy ajanlari
-- Merkezi Aygaz domain guardrail'i ve capability tabanli routing
-- MongoDB varsayilan veri katmani; SQLite ve SQL Server icin Dapper tabanli alternatif
-- Siparis durumu guncelleme ve iptal akislarinda kontrollu operasyon servisleri
-- MongoDB destekli kalici RAG index'i ve opsiyonel local in-memory RAG
-- Ollama veya Groq/OpenAI uyumlu Semantic Kernel provider secimi
-- Lexical embedding varsayilani; istenirse Ollama `nomic-embed-text`
-- AI provider gecici hata siniflandirma, retry ve deterministik fast-path fallback'leri
-- xUnit testleriyle veri erisimi, routing, guardrail, RAG ve web API sozlesmeleri
+- .NET 9 console app, ASP.NET Core Web API, and vanilla Chat UI
+- Customer, order, product, inventory, sales, and support-policy agents through Semantic Kernel
+- Central Aygaz domain guardrail and capability-based routing
+- MongoDB as the default data layer; SQLite and SQL Server alternatives through Dapper
+- Controlled order status update and cancellation flows
+- Persistent MongoDB-backed RAG index and optional local in-memory RAG
+- Semantic Kernel provider selection for Ollama or Groq/OpenAI-compatible endpoints
+- Lexical embedding by default; optional Ollama `nomic-embed-text`
+- Temporary AI provider error classification, retry handling, and deterministic fast-path fallbacks
+- xUnit coverage for data access, routing, guardrails, RAG, and Web API contracts
 
-## Teknoloji Gereksinimleri
+## Requirements
 
 - .NET 9 SDK
-- MongoDB (`localhost:27017` varsayilan)
-- Opsiyonel: Ollama
-- Opsiyonel: SQLite veya SQL Server
+- MongoDB (`localhost:27017` by default)
+- Optional: Ollama
+- Optional: SQLite or SQL Server
 - xUnit test runner
 
-Ollama ile calismak icin onerilen modeller:
+Recommended Ollama models:
 
 ```powershell
 ollama pull qwen3:4b-instruct
 ollama pull nomic-embed-text
 ```
 
-Groq veya OpenAI kullanilacaksa ilgili API anahtari ortam degiskeni olarak verilmelidir:
+If you use Groq or OpenAI, provide the related API key as an environment variable:
 
 ```powershell
 $env:GROQ_API_KEY = "..."
 $env:OPENAI_API_KEY = "..."
 ```
 
-## Hizli Baslangic
+## Quick Start
 
-Repository kok dizininde restore, build ve test:
+Restore, build, and test from the repository root:
 
 ```powershell
 dotnet restore .\Aygaz.ECommerce.Agent.sln
@@ -49,55 +49,55 @@ dotnet build .\Aygaz.ECommerce.Agent.sln --no-restore
 dotnet test .\Aygaz.ECommerce.Agent.sln --no-build --no-restore
 ```
 
-Ana Semantic Kernel Web Chat demosu:
+Run the main Semantic Kernel Web Chat demo:
 
 ```powershell
 dotnet run --project .\src\Aygaz.ECommerce.SemanticKernel.Web\Aygaz.ECommerce.SemanticKernel.Web.csproj
 ```
 
-Tarayici:
+Open in a browser:
 
 ```text
 http://localhost:5190
 ```
 
-MongoDB demo verisini ilk kurulumda veya yenilemek istediginizde:
+Seed MongoDB demo data on first setup or when you want to refresh the dataset:
 
 ```powershell
 dotnet run --project .\src\Aygaz.ECommerce.SemanticKernel.Web\Aygaz.ECommerce.SemanticKernel.Web.csproj -- --seed-mongodb
 ```
 
-RAG dokumanlarini manuel yeniden indexlemek icin:
+Manually rebuild the RAG document index:
 
 ```powershell
 dotnet run --project .\src\Aygaz.ECommerce.SemanticKernel.Web\Aygaz.ECommerce.SemanticKernel.Web.csproj -- --ingest-rag
 ```
 
-Console demo:
+Run the console demo:
 
 ```powershell
 dotnet run --project .\src\Aygaz.ECommerce.Agent\Aygaz.ECommerce.Agent.csproj
 ```
 
-## Proje Yapisi
+## Project Structure
 
 ```text
 src/
-  Aygaz.AgentFramework/                  Agent kayit, calistirma, telemetry ve retry altyapisi
-  Aygaz.ECommerce.Agent/                 Veri erisimi, servisler, tools, guardrail ve RAG
-  Aygaz.ECommerce.SemanticKernel/        Semantic Kernel ajanlari, plugin'ler ve chat orchestration
-  Aygaz.ECommerce.SemanticKernel.Web/    Ana Web API + Chat UI demosu
-  Aygaz.ECommerce.Web/                   Ollama/native agent Web API alternatifi
-  Aygaz.ECommerce.SemanticKernel.Demo/   Minimal Semantic Kernel console demosu
+  Aygaz.AgentFramework/                  Agent registration, execution, telemetry, and retry infrastructure
+  Aygaz.ECommerce.Agent/                 Data access, services, tools, guardrails, and RAG
+  Aygaz.ECommerce.SemanticKernel/        Semantic Kernel agents, plugins, and chat orchestration
+  Aygaz.ECommerce.SemanticKernel.Web/    Main Web API + Chat UI demo
+  Aygaz.ECommerce.Web/                   Alternative Ollama/native-agent Web API
+  Aygaz.ECommerce.SemanticKernel.Demo/   Minimal Semantic Kernel console demo
 tests/
-  *.Tests/                               Unit ve API sozlesme testleri
+  *.Tests/                               Unit and API contract tests
 data/
-  demo-documents/                        Sentetik destek politikasi dokumanlari
+  demo-documents/                        Synthetic support-policy documents
 ```
 
-## Konfigurasyon
+## Configuration
 
-Varsayilan ayarlar `appsettings.json` dosyalarindadir. En onemli bolumler:
+Default settings live in the project `appsettings.json` files. The most important sections are:
 
 ```json
 {
@@ -125,21 +125,21 @@ Varsayilan ayarlar `appsettings.json` dosyalarindadir. En onemli bolumler:
 }
 ```
 
-`DataAccess:Provider` degeri `MongoDb`, `Sqlite` veya `SqlServer` olabilir. MongoDB varsayilandir.
+`DataAccess:Provider` can be `MongoDb`, `Sqlite`, or `SqlServer`. MongoDB is the default.
 
 `Rag:StoreProvider`:
 
-- `MongoDb`: dokuman chunk ve embedding'lerini MongoDB'de kalici tutar.
-- `Local`: dokumanlari uygulama icinde in-memory indexler.
+- `MongoDb`: stores document chunks and embeddings persistently in MongoDB.
+- `Local`: indexes documents in memory inside the application.
 
 `Rag:EmbeddingProvider`:
 
-- `Lexical`: ek model gerektirmeyen deterministik lexical embedding.
-- `Ollama`: `Ollama:EmbeddingModel` ile local Ollama embedding servisi.
+- `Lexical`: deterministic lexical embedding with no extra model requirement.
+- `Ollama`: local Ollama embedding service through `Ollama:EmbeddingModel`.
 
-## Mimari Akis
+## Architecture Flow
 
-Kullanici mesaji once domain guardrail'den gecer. Guardrail sonucu izin verirse capability belirlenir ve ilgili Semantic Kernel ajani calisir.
+Every user message passes through the domain guardrail first. If the guardrail allows the request, the capability is resolved and the related Semantic Kernel agent runs.
 
 ```text
 Browser / Console
@@ -148,58 +148,58 @@ Browser / Console
   -> Capability Resolver
   -> Semantic Kernel Agent
   -> Plugin / C# Service
-  -> MongoDB, SQL veya RAG
-  -> Turkce final cevap
+  -> MongoDB, SQL, or RAG
+  -> final answer
 ```
 
-Out-of-scope veya belirsiz taleplerde is ajani cagrilmaz. Bu sinir yalniz prompt'a birakilmaz; C# servis akisi icinde enforce edilir.
+Business agents are not invoked for out-of-scope or ambiguous requests. This boundary is enforced in the C# service flow, not only through prompts.
 
 ## Domain Guardrail
 
-Kullanici girdisi dogrudan is ajanina gitmez. Once ayri bir guardrail katmani tarafindan degerlendirilir:
+User input does not go directly to a business agent. It is evaluated by a separate guardrail layer first:
 
 ```text
 User input
   -> DomainGuardrail
-     -> Allowed    -> ilgili ajan ve tool akisi
-     -> OutOfScope -> sabit kapsam disi cevabi
-     -> Ambiguous  -> sabit netlestirme cevabi
+     -> Allowed    -> related agent and tool flow
+     -> OutOfScope -> fixed out-of-scope response
+     -> Ambiguous  -> fixed clarification response
 ```
 
-Kararlar:
+Decisions:
 
-- `Allowed`: Aygaz e-ticaret demo kapsamina giren musteri, siparis, urun, stok, satis veya destek politikasi talebi
-- `OutOfScope`: baska organizasyonlara ait talepler veya e-ticaret domain'i disindaki konular
-- `Ambiguous`: Aygaz e-ticaret baglantisi guvenilir bicimde anlasilmayan mesajlar
+- `Allowed`: customer, order, product, inventory, sales, or support-policy requests in the Aygaz e-commerce demo scope
+- `OutOfScope`: requests about other organizations or topics outside the e-commerce domain
+- `Ambiguous`: messages where the Aygaz e-commerce connection cannot be determined reliably
 
-Guardrail kararindan sonra capability resolver ilgili yetenegi belirler. Policy, order, product, inventory, customer ve sales sinirlari birbirinden bagimsiz tutulur. Bu sayede ornegin baska bir sirketin iade politikasi `OutOfScope` kalirken, Aygaz demo iade politikasi support-policy RAG akisina yonlenir.
+After the guardrail decision, the capability resolver selects the related capability. Policy, order, product, inventory, customer, and sales boundaries are kept independent. For example, another company's return policy remains `OutOfScope`, while the Aygaz demo return policy is routed to the support-policy RAG flow.
 
-Ornekler:
+Examples:
 
 ```text
-Allowed:    ahmet.yilmaz@example.com musterisi kim?
-Allowed:    AYG-DEMO-1001 siparisi ne durumda?
-Allowed:    AYG-DEMO-PRD-001 stokta mi?
-Allowed:    Iade suresi kac gun?
-OutOfScope: Arcelik'in iade politikasi nedir?
-OutOfScope: Bugunku futbol maclarini anlat.
-Ambiguous:  Bunun durumunu kontrol et.
+Allowed:    Who is the customer ahmet.yilmaz@example.com?
+Allowed:    What is the status of order AYG-DEMO-1001?
+Allowed:    Is AYG-DEMO-PRD-001 in stock?
+Allowed:    What is the return period?
+OutOfScope: What is Arcelik's return policy?
+OutOfScope: Tell me today's football scores.
+Ambiguous:  Check its status.
 ```
 
-## Ajanlar ve Yetenekler
+## Agents and Capabilities
 
-- Customer: musteri ID, e-posta ve ad/soyad sorgulari
-- Order: siparis detaylari, musteri siparisleri, son siparis, durum guncelleme ve iptal
-- Product: SKU, ad ve kategori bazli urun arama
-- Inventory: urun stok ve lokasyon bilgisi
-- Sales: satis ozeti, en cok satan urunler, musteri alisveris ozeti
-- Support Policy: iade, teslimat, kampanya ve destek dokumanlari
+- Customer: customer lookup by ID, email, and full-name search
+- Order: order details, customer orders, latest order, status update, and cancellation
+- Product: product lookup by SKU, name, and category
+- Inventory: product stock and location information
+- Sales: sales summary, top-selling products, and customer purchase summary
+- Support Policy: return, delivery, campaign, and support documents
 
-Veri disari ham entity graph olarak tasinmaz. Tool cevaplari sinirli DTO'lar ve hesaplanmis ozetlerle tutulur.
+Raw entity graphs are not exposed outside the service layer. Tool responses are limited to DTOs and computed summaries.
 
 ## Tool Allow-List
 
-Ajanlara yalniz kontrollu servis metotlari acilir. Reflection, raw SQL, export, genel listeleme veya sinirsiz veri dokme tool'u yoktur.
+Agents can only call controlled service methods. There are no reflection, raw SQL, export, broad list-all, or unlimited data-dump tools.
 
 Customer:
 
@@ -235,89 +235,89 @@ Support Policy:
 
 - `search_documents(query)`
 
-`get_all_customers`, `get_all_orders`, `get_all_products`, `get_all_inventory`, raw entity graph, raw SQL, price mutation, stock mutation, refund ve export tool'lari bilincli olarak acik degildir.
+`get_all_customers`, `get_all_orders`, `get_all_products`, `get_all_inventory`, raw entity graphs, raw SQL, price mutation, stock mutation, refund, and export tools are intentionally not exposed.
 
-## Coklu Tool Akislari
+## Multi-Tool Flows
 
-Semantic Kernel ajanlari tek bir cevap icinde birden fazla tool kullanabilir. C# tarafinda keyword routing ile sonraki tool zorlanmaz; ajan onceki tool sonucundaki ID veya baglami kullanarak devam eder.
+Semantic Kernel agents can use multiple tools within a single answer. C# does not force the next tool through keyword routing; the agent continues by using IDs or context returned from previous tool calls.
 
-Musteri -> Siparis:
+Customer -> Order:
 
 ```text
 User -> search_customers_by_name -> Customer ID
      -> get_latest_customer_order
-     -> Turkce final cevap
+     -> final answer
 ```
 
-Urun -> Stok:
+Product -> Inventory:
 
 ```text
 User -> get_product_by_sku -> Product ID
-     -> get_total_product_stock veya get_product_inventory
-     -> Turkce final cevap
+     -> get_total_product_stock or get_product_inventory
+     -> final answer
 ```
 
-Musteri -> Siparis -> Politika:
+Customer -> Order -> Policy:
 
 ```text
 User -> search_customers_by_name -> Customer ID
      -> get_latest_customer_order
      -> search_documents
-     -> Turkce final cevap
+     -> final answer
 ```
 
-Provider gecici olarak kullanilamazsa desteklenen deterministik fast-path'ler devreye girebilir. Ornegin exact siparis numarasi, SKU veya acik policy sorgularinda servis/RAG sonucu ile cevap uretilir.
+If the provider is temporarily unavailable, supported deterministic fast paths can take over. For example, exact order-number, SKU, or explicit policy requests can be answered through service/RAG results.
 
-## RAG / Dokuman Arama
+## RAG / Document Search
 
-Demo dokumanlari:
+Demo documents:
 
 - `data/demo-documents/return-policy.txt`
 - `data/demo-documents/delivery-policy.txt`
 - `data/demo-documents/campaign-policy.txt`
 - `data/demo-documents/customer-support.txt`
 
-MongoDB modunda uygulama baslangicinda `AutoIngestOnStartup=true` ise dokumanlar chunk'lanir, embedding uretilir ve `documentChunks` collection'ina upsert edilir. Arama sirasinda yalniz en alakali sinirli chunk'lar ajan cevabina kaynak olur.
+In MongoDB mode, if `AutoIngestOnStartup=true`, documents are chunked, embedded, and upserted into the `documentChunks` collection on application startup. Search only provides the most relevant limited chunks as context for the agent answer.
 
-RAG akisi:
+RAG flow:
 
 ```text
 Documents
   -> paragraph chunks
-  -> Lexical veya Ollama embedding
-  -> MongoDB documentChunks veya in-memory index
+  -> Lexical or Ollama embedding
+  -> MongoDB documentChunks or in-memory index
   -> cosine similarity
-  -> en alakali en fazla 3 chunk
-  -> support-policy agent cevabi
+  -> up to 3 most relevant chunks
+  -> support-policy agent response
 ```
 
-`Lexical` embedding varsayilani ek model gerektirmez ve testlerde deterministik davranir. `Ollama` embedding secilirse `nomic-embed-text` gibi local bir embedding modeli kullanilir.
+The default `Lexical` embedding requires no extra model and behaves deterministically in tests. If `Ollama` embedding is selected, a local embedding model such as `nomic-embed-text` is used.
 
-Ornek:
+Examples:
 
 ```text
-Iade suresi kac gun?
-Ahmet Yilmaz'in son siparisini kontrol et ve iade politikasini soyle.
+What is the return period?
+Check Ahmet Yilmaz's latest order and explain the return policy.
 ```
 
-## Web API ve Chat UI
+## Web API and Chat UI
 
-Ana demo `Aygaz.ECommerce.SemanticKernel.Web` projesidir. Mevcut servis, guardrail, ajan ve RAG katmanlarini yeniden yazmadan HTTP API ve static chat UI sunar.
+The main demo is the `Aygaz.ECommerce.SemanticKernel.Web` project. It exposes the existing service, guardrail, agent, and RAG layers through an HTTP API and static chat UI without rewriting them.
 
-Endpoint'ler:
+Endpoints:
 
-| Endpoint | Aciklama |
-|----------|----------|
-| `GET /health` | Basit durum kontrolu |
-| `POST /api/chat` | Guardrail ve Semantic Kernel ajanlariyla sohbet |
-| `POST /api/chat/clear` | Oturum gecmisini temizler |
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Basic health check |
+| `POST /api/chat` | Chat through the guardrail and Semantic Kernel agents |
+| `POST /api/chat/clear` | Clears session conversation history |
 
 `POST /api/chat` request:
 
 ```json
 {
-  "message": "Ahmet Yilmaz'in son siparisi nedir?",
-  "sessionId": "opsiyonel-browser-session-id"
+  "message": "What is Ahmet Yilmaz's latest order?",
+  "sessionId": "optional-browser-session-id"
 }
 ```
 
@@ -332,66 +332,66 @@ Response:
 }
 ```
 
-API ham tool payload, raw LLM cevabi veya entity graph dondurmez. Browser session ID ile in-memory sohbet baglami korunur.
+The API does not return raw tool payloads, raw LLM responses, or entity graphs. In-memory conversation context is preserved through the browser session ID.
 
-## Veri Katmani ve Demo Seed
+## Data Layer and Demo Seed
 
-Varsayilan veri katmani MongoDB'dir. `DataAccess:Provider` ile `MongoDb`, `Sqlite` veya `SqlServer` secilebilir.
+MongoDB is the default data layer. `DataAccess:Provider` can select `MongoDb`, `Sqlite`, or `SqlServer`.
 
-Demo veri ozellikleri:
+Demo data properties:
 
-- Musteri, siparis, siparis kalemi, urun, stok ve siparis audit log kayitlari sentetiktir.
-- E-postalar `example.com`, siparisler `AYG-DEMO-*`, SKU'lar `AYG-DEMO-PRD-*` formatindadir.
-- Mongo seed yalniz `--seed-mongodb` ile calisir ve sabit anahtarlarla upsert yaptigi icin tekrar calistirildiginda duplicate uretmez.
-- Mongo startup normalde collection/index hazirligi yapar; seed yazimi acik komuta baglidir.
-- `documentChunks` collection'i RAG chunk ve embedding kayitlarini tutar.
-- Iliskisel provider secildiginde Dapper initializer tablo semasini hazirlar; production migration sureci yerine gecmez.
+- Customer, order, order item, product, inventory, and order audit log records are synthetic.
+- Emails use `example.com`, orders use `AYG-DEMO-*`, and SKUs use the `AYG-DEMO-PRD-*` format.
+- Mongo seed only runs with `--seed-mongodb` and uses fixed keys with upsert behavior, so reruns do not create duplicates.
+- Normal Mongo startup prepares collections and indexes; writing seed data requires the explicit seed command.
+- The `documentChunks` collection stores RAG chunks and embedding records.
+- When a relational provider is selected, the Dapper initializer prepares the table schema; it is not a replacement for a production migration process.
 
-Sales analytics servisleri ham order item listesi yerine hesaplanmis DTO'lar dondurur. Iptal siparisleri aggregate hesaplarindan dislanir.
+Sales analytics services return computed DTOs instead of raw order item lists. Cancelled orders are excluded from aggregate calculations.
 
-## Ornek Sorular
+## Example Questions
 
 ```text
-ahmet.yilmaz@example.com musterisi kim?
-Ahmet Yilmaz isimli musteriyi bul.
-1 numarali musteriyi getir.
-AYG-DEMO-1001 numarali siparisin durumu nedir?
-AYG-DEMO-1001 siparisini teslim edildi yap.
-AYG-DEMO-1002 siparisini iptal et.
-AYG-DEMO-PRD-001 urununu bul.
-AYG-DEMO-PRD-003 stokta mi?
-Demo Product Alpha stokta mi?
-Son 30 gunluk e-ticaret satis ozetini getir.
-Son 90 gunde en cok satilan 5 urunu goster.
-Ahmet Yilmaz son 90 gunde ne kadar alisveris yapti?
-Iade suresi kac gun?
-Ahmet Yilmaz'in son siparisini kontrol et ve iade politikasini soyle.
-Arcelik'in iade politikasi nedir?
+Who is ahmet.yilmaz@example.com?
+Find the customer named Ahmet Yilmaz.
+Get customer number 1.
+What is the status of order AYG-DEMO-1001?
+Mark order AYG-DEMO-1001 as delivered.
+Cancel order AYG-DEMO-1002.
+Find product AYG-DEMO-PRD-001.
+Is AYG-DEMO-PRD-003 in stock?
+Is Demo Product Alpha in stock?
+Show the e-commerce sales summary for the last 30 days.
+Show the top 5 products sold in the last 90 days.
+How much did Ahmet Yilmaz spend in the last 90 days?
+What is the return period?
+Check Ahmet Yilmaz's latest order and explain the return policy.
+What is Arcelik's return policy?
 ```
 
-## Test Kapsami
+## Test Coverage
 
-Testler local LLM'e bagimli olmayacak sekilde tasarlanmistir. Kapsanan basliklar:
+Tests are designed to avoid depending on a local LLM. Coverage includes:
 
-- Dapper/SQLite veri erisimi sozlesmeleri
-- Mongo provider secimi, index ve seed sozlesmeleri
-- Lexical embedding ve dokuman retrieval davranisi
-- Semantic Kernel routing, fast-path ve follow-up davranislari
-- Guardrail fail-closed kararlari
-- Web API validation, session ve hata cevaplari
-- AI provider retry/fallback davranislari
+- Dapper/SQLite data access contracts
+- Mongo provider selection, index, and seed contracts
+- Lexical embedding and document retrieval behavior
+- Semantic Kernel routing, fast-path, and follow-up behavior
+- Guardrail fail-closed decisions
+- Web API validation, session, and error responses
+- AI provider retry/fallback behavior
 
-Calistirma:
+Run:
 
 ```powershell
 dotnet test .\Aygaz.ECommerce.Agent.sln
 ```
 
-## Guvenlik ve Sinirlar
+## Safety and Boundaries
 
-- Veri seti deterministik ve sentetiktir.
-- Authentication/authorization bu demo kapsaminda production seviyesinde tamamlanmis degildir.
-- Guardrail out-of-scope isteklerde ajan/tool katmanini cagirmadan cevap verir.
-- Mongo seed yalniz `--seed-mongodb` ile manuel calisir.
-- RAG dokumanlari gercek kurum dokumani degildir.
-- LLM provider hatalarinda desteklenen deterministik fast-path'ler devreye girebilir.
+- The dataset is deterministic and synthetic.
+- Authentication/authorization is not production-ready in this demo scope.
+- The guardrail answers out-of-scope requests without invoking the agent/tool layer.
+- Mongo seed only runs manually with `--seed-mongodb`.
+- RAG documents are not real internal company documents.
+- Supported deterministic fast paths can respond when the LLM provider has temporary failures.
