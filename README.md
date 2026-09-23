@@ -154,6 +154,38 @@ Browser / Console
 
 Out-of-scope veya belirsiz taleplerde is ajani cagrilmaz. Bu sinir yalniz prompt'a birakilmaz; C# servis akisi icinde enforce edilir.
 
+## Domain Guardrail
+
+Kullanici girdisi dogrudan is ajanina gitmez. Once ayri bir guardrail katmani tarafindan degerlendirilir:
+
+```text
+User input
+  -> DomainGuardrail
+     -> Allowed    -> ilgili ajan ve tool akisi
+     -> OutOfScope -> sabit kapsam disi cevabi
+     -> Ambiguous  -> sabit netlestirme cevabi
+```
+
+Kararlar:
+
+- `Allowed`: Aygaz e-ticaret demo kapsamina giren musteri, siparis, urun, stok, satis veya destek politikasi talebi
+- `OutOfScope`: baska organizasyonlara ait talepler veya e-ticaret domain'i disindaki konular
+- `Ambiguous`: Aygaz e-ticaret baglantisi guvenilir bicimde anlasilmayan mesajlar
+
+Guardrail kararindan sonra capability resolver ilgili yetenegi belirler. Policy, order, product, inventory, customer ve sales sinirlari birbirinden bagimsiz tutulur. Bu sayede ornegin baska bir sirketin iade politikasi `OutOfScope` kalirken, Aygaz demo iade politikasi support-policy RAG akisina yonlenir.
+
+Ornekler:
+
+```text
+Allowed:    ahmet.yilmaz@example.com musterisi kim?
+Allowed:    AYG-DEMO-1001 siparisi ne durumda?
+Allowed:    AYG-DEMO-PRD-001 stokta mi?
+Allowed:    Iade suresi kac gun?
+OutOfScope: Arcelik'in iade politikasi nedir?
+OutOfScope: Bugunku futbol maclarini anlat.
+Ambiguous:  Bunun durumunu kontrol et.
+```
+
 ## Ajanlar ve Yetenekler
 
 - Customer: musteri ID, e-posta ve ad/soyad sorgulari
@@ -164,6 +196,77 @@ Out-of-scope veya belirsiz taleplerde is ajani cagrilmaz. Bu sinir yalniz prompt
 - Support Policy: iade, teslimat, kampanya ve destek dokumanlari
 
 Veri disari ham entity graph olarak tasinmaz. Tool cevaplari sinirli DTO'lar ve hesaplanmis ozetlerle tutulur.
+
+## Tool Allow-List
+
+Ajanlara yalniz kontrollu servis metotlari acilir. Reflection, raw SQL, export, genel listeleme veya sinirsiz veri dokme tool'u yoktur.
+
+Customer:
+
+- `get_customer_by_email(email)`
+- `get_customer_by_id(id)`
+- `search_customers_by_name(query)`
+
+Order:
+
+- `get_order_by_number(orderNumber)`
+- `get_customer_orders(customerId)`
+- `get_latest_customer_order(customerId)`
+- `update_order_status(orderNumber, status, reason)`
+- `cancel_order(orderNumber, reason)`
+
+Product:
+
+- `get_product_by_sku(sku)`
+- `search_products(query)`
+
+Inventory:
+
+- `get_product_inventory(productId)`
+- `get_total_product_stock(productId)`
+
+Sales:
+
+- `get_sales_summary(fromDate, toDate)`
+- `get_top_selling_products(fromDate, toDate, limit)`
+- `get_customer_purchase_summary(customerId, fromDate, toDate)`
+
+Support Policy:
+
+- `search_documents(query)`
+
+`get_all_customers`, `get_all_orders`, `get_all_products`, `get_all_inventory`, raw entity graph, raw SQL, price mutation, stock mutation, refund ve export tool'lari bilincli olarak acik degildir.
+
+## Coklu Tool Akislari
+
+Semantic Kernel ajanlari tek bir cevap icinde birden fazla tool kullanabilir. C# tarafinda keyword routing ile sonraki tool zorlanmaz; ajan onceki tool sonucundaki ID veya baglami kullanarak devam eder.
+
+Musteri -> Siparis:
+
+```text
+User -> search_customers_by_name -> Customer ID
+     -> get_latest_customer_order
+     -> Turkce final cevap
+```
+
+Urun -> Stok:
+
+```text
+User -> get_product_by_sku -> Product ID
+     -> get_total_product_stock veya get_product_inventory
+     -> Turkce final cevap
+```
+
+Musteri -> Siparis -> Politika:
+
+```text
+User -> search_customers_by_name -> Customer ID
+     -> get_latest_customer_order
+     -> search_documents
+     -> Turkce final cevap
+```
+
+Provider gecici olarak kullanilamazsa desteklenen deterministik fast-path'ler devreye girebilir. Ornegin exact siparis numarasi, SKU veya acik policy sorgularinda servis/RAG sonucu ile cevap uretilir.
 
 ## RAG / Dokuman Arama
 
@@ -176,6 +279,20 @@ Demo dokumanlari:
 
 MongoDB modunda uygulama baslangicinda `AutoIngestOnStartup=true` ise dokumanlar chunk'lanir, embedding uretilir ve `documentChunks` collection'ina upsert edilir. Arama sirasinda yalniz en alakali sinirli chunk'lar ajan cevabina kaynak olur.
 
+RAG akisi:
+
+```text
+Documents
+  -> paragraph chunks
+  -> Lexical veya Ollama embedding
+  -> MongoDB documentChunks veya in-memory index
+  -> cosine similarity
+  -> en alakali en fazla 3 chunk
+  -> support-policy agent cevabi
+```
+
+`Lexical` embedding varsayilani ek model gerektirmez ve testlerde deterministik davranir. `Ollama` embedding secilirse `nomic-embed-text` gibi local bir embedding modeli kullanilir.
+
 Ornek:
 
 ```text
@@ -183,19 +300,72 @@ Iade suresi kac gun?
 Ahmet Yilmaz'in son siparisini kontrol et ve iade politikasini soyle.
 ```
 
+## Web API ve Chat UI
+
+Ana demo `Aygaz.ECommerce.SemanticKernel.Web` projesidir. Mevcut servis, guardrail, ajan ve RAG katmanlarini yeniden yazmadan HTTP API ve static chat UI sunar.
+
+Endpoint'ler:
+
+| Endpoint | Aciklama |
+|----------|----------|
+| `GET /health` | Basit durum kontrolu |
+| `POST /api/chat` | Guardrail ve Semantic Kernel ajanlariyla sohbet |
+| `POST /api/chat/clear` | Oturum gecmisini temizler |
+
+`POST /api/chat` request:
+
+```json
+{
+  "message": "Ahmet Yilmaz'in son siparisi nedir?",
+  "sessionId": "opsiyonel-browser-session-id"
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "message": "...",
+  "scope": "Allowed",
+  "sessionId": "..."
+}
+```
+
+API ham tool payload, raw LLM cevabi veya entity graph dondurmez. Browser session ID ile in-memory sohbet baglami korunur.
+
+## Veri Katmani ve Demo Seed
+
+Varsayilan veri katmani MongoDB'dir. `DataAccess:Provider` ile `MongoDb`, `Sqlite` veya `SqlServer` secilebilir.
+
+Demo veri ozellikleri:
+
+- Musteri, siparis, siparis kalemi, urun, stok ve siparis audit log kayitlari sentetiktir.
+- E-postalar `example.com`, siparisler `AYG-DEMO-*`, SKU'lar `AYG-DEMO-PRD-*` formatindadir.
+- Mongo seed yalniz `--seed-mongodb` ile calisir ve sabit anahtarlarla upsert yaptigi icin tekrar calistirildiginda duplicate uretmez.
+- Mongo startup normalde collection/index hazirligi yapar; seed yazimi acik komuta baglidir.
+- `documentChunks` collection'i RAG chunk ve embedding kayitlarini tutar.
+- Iliskisel provider secildiginde Dapper initializer tablo semasini hazirlar; production migration sureci yerine gecmez.
+
+Sales analytics servisleri ham order item listesi yerine hesaplanmis DTO'lar dondurur. Iptal siparisleri aggregate hesaplarindan dislanir.
+
 ## Ornek Sorular
 
 ```text
 ahmet.yilmaz@example.com musterisi kim?
 Ahmet Yilmaz isimli musteriyi bul.
+1 numarali musteriyi getir.
 AYG-DEMO-1001 numarali siparisin durumu nedir?
 AYG-DEMO-1001 siparisini teslim edildi yap.
 AYG-DEMO-1002 siparisini iptal et.
 AYG-DEMO-PRD-001 urununu bul.
+AYG-DEMO-PRD-003 stokta mi?
 Demo Product Alpha stokta mi?
 Son 30 gunluk e-ticaret satis ozetini getir.
 Son 90 gunde en cok satilan 5 urunu goster.
+Ahmet Yilmaz son 90 gunde ne kadar alisveris yapti?
 Iade suresi kac gun?
+Ahmet Yilmaz'in son siparisini kontrol et ve iade politikasini soyle.
 Arcelik'in iade politikasi nedir?
 ```
 
